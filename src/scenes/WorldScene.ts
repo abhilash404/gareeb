@@ -8,16 +8,25 @@ import {
   SERVER_PORT,
   SCARF_COLORS,
   ACTION_COOLDOWN_MS,
+  PATCH_MS,
+  HEARTBEAT_MS,
+  TAKEN_OVER,
   WorldState,
   type InputMessage,
+  type JoinOptions,
   type PlayerState,
   type PropState,
 } from '../../shared/protocol';
 import { CharacterView } from '../CharacterView';
 import { TerrainView } from '../TerrainView';
-import { showStatus } from '../status';
+import { showStatus, showPing } from '../status';
 
-type Remote = { view: CharacterView; state: PlayerState; shown: Body };
+// Where another player was when an update about them arrived (t = performance.now()).
+type Snapshot = { t: number; x: number; y: number; z: number; dirX: number; dirY: number };
+type Remote = { view: CharacterView; snaps: Snapshot[] };
+
+const DEAD_AFTER_MS = 6000; // no reply from the server for this long: the connection is gone
+const RETRY_MS = 3000; // wait between attempts to reach the server
 
 // Columns in front of a character that can cover them on screen: [dx, dy] offsets.
 const IN_FRONT = [
@@ -54,6 +63,15 @@ export class WorldScene extends Phaser.Scene {
   private lastAction = 0;
 
   private remotes = new Map<string, Remote>();
+  // Other players are drawn this far in the past, gliding between the updates the server sent.
+  // That hides updates arriving unevenly; it grows when the connection is jittery.
+  private interpDelay = PATCH_MS * 2;
+  private jitter = 0; // how unevenly updates arrive, in ms
+  private lastPatchAt = 0;
+
+  private lastPingAt = 0;
+  private lastPongAt = 0;
+  private rejoining = false;
 
   constructor() {
     super('world');
@@ -90,8 +108,20 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    const world = this.world;
-    if (!world || !this.me || !this.room) return;
+    if (!this.world || !this.me || !this.room) return;
+    // Phaser stops for good if a frame throws. Log it and carry on; if it keeps failing, the
+    // heartbeat below stops and the server drops us, which reloads the game (see rejoin).
+    try {
+      this.frame(delta);
+    } catch (err) {
+      console.error(err);
+      return;
+    }
+    this.heartbeat();
+  }
+
+  private frame(delta: number) {
+    const world = this.world!;
     this.updateCursor();
     this.updateRemotes(delta);
 
@@ -114,7 +144,7 @@ export class WorldScene extends Phaser.Scene {
         const msg = { ...input, seq: ++this.seq };
         this.myBody = this.stepMe(this.myBody, msg);
         this.pending.push(msg);
-        this.room.send('input', msg);
+        this.room!.send('input', msg);
       }
       this.wasMoving = moving;
     }
@@ -122,9 +152,9 @@ export class WorldScene extends Phaser.Scene {
     // Screens refresh at 60, 75, 144Hz..., but movement ticks at 60Hz. Drawing the player part-way
     // between their last two tick positions keeps motion even at any refresh rate.
     const shown = blend(this.prevBody, this.myBody, this.tickTime / TICK_MS);
-    this.showCharacter(this.me, shown);
-    this.me.setMotion(input, !world.isOnGround(this.myBody));
-    this.centerCamera(this.me);
+    this.showCharacter(this.me!, shown);
+    this.me!.setMotion(input, !world.isOnGround(this.myBody));
+    this.centerCamera(this.me!);
     this.terrain!.update(shown.gx, shown.gy);
   }
 
@@ -148,23 +178,51 @@ export class WorldScene extends Phaser.Scene {
     return this.world!.step(body, { x: msg.x, y: msg.y, jump: msg.j === 1 }, stats);
   }
 
+  // Tell the server our game is still running, and check it still answers.
+  private heartbeat() {
+    const now = performance.now();
+    if (now - this.lastPingAt >= HEARTBEAT_MS) {
+      this.lastPingAt = now;
+      this.room!.send('ping', { t: now });
+    }
+    if (now - this.lastPongAt > DEAD_AFTER_MS) this.rejoin();
+  }
+
   private async connect() {
     showStatus('Connecting…');
     // Dev: Vite and the game server run on separate ports. Production: one server hosts both.
     const client = new Client(
       import.meta.env.DEV ? `${location.protocol}//${location.hostname}:${SERVER_PORT}` : location.origin,
     );
+    const options: JoinOptions = { key: tabKey() };
     try {
-      this.room = await client.joinOrCreate(ROOM_NAME, {}, WorldState);
+      this.room = await client.joinOrCreate(ROOM_NAME, options, WorldState);
     } catch (err) {
       console.error(err);
-      showStatus("Can't reach the game server. Is it running? (npm run dev)");
+      showStatus("Can't reach the game server. Retrying…");
+      this.time.delayedCall(RETRY_MS, () => this.connect());
       return;
     }
     showStatus(null);
 
     const room = this.room;
-    room.onLeave(() => showStatus('Disconnected from the server. Refresh to rejoin.'));
+    // The SDK's own reconnect can't succeed (the server lets go of dropped players straight away)
+    // and would leave us frozen while it retries for about a minute. We rejoin ourselves instead.
+    room.reconnection.enabled = false;
+    room.onLeave((code) => {
+      if (code === TAKEN_OVER) showStatus('You joined from another tab. This one is closed.');
+      else this.rejoin();
+    });
+    this.lastPongAt = performance.now();
+    room.onMessage('pong', (t: number) => {
+      this.lastPongAt = performance.now();
+      showPing(this.lastPongAt - t);
+    });
+    // A background tab sends nothing, so don't count that time as the server being silent.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.lastPongAt = performance.now();
+    });
+    room.onStateChange(() => this.measureJitter());
     const callbacks = Callbacks.get(room);
     let started = false;
     callbacks.listen('seed', (seed) => {
@@ -203,7 +261,9 @@ export class WorldScene extends Phaser.Scene {
         this.terrain!.update(body.gx, body.gy, true);
         callbacks.onChange(player, () => this.reconcile(player));
       } else {
-        this.remotes.set(id, { view, state: player, shown: body });
+        const remote: Remote = { view, snaps: [snapshotOf(player, performance.now())] };
+        this.remotes.set(id, remote);
+        callbacks.onChange(player, () => this.addSnapshot(remote, player));
         // Another player struck something: play their animation.
         callbacks.listen(player, 'actions', () => view.playAction(), false);
       }
@@ -229,6 +289,7 @@ export class WorldScene extends Phaser.Scene {
     const view = this.terrain!.props.get(`${prop.x},${prop.y}`);
     if (prop.hp === 0) {
       this.world!.removeProp(prop.x, prop.y);
+      if (view) this.tweens.killTweensOf(view.image);
       if (view && live) this.burst(view.baseX, view.image.y - 6, CHIP_COLORS[view.kind], 18);
       this.terrain!.removeProp(prop.x, prop.y);
       return;
@@ -250,15 +311,58 @@ export class WorldScene extends Phaser.Scene {
     this.myBody = body;
   }
 
-  // Other players only update ~20 times a second, so glide towards their latest position.
+  // Lost the server: reload to join again. The server keeps our spot (see JoinOptions.key).
+  // In a background tab, wait until the player is back, or we'd rejoin only to be dropped again.
+  private rejoin() {
+    if (this.rejoining) return;
+    this.rejoining = true;
+    showStatus('Connection lost. Reconnecting…');
+    if (!document.hidden) {
+      setTimeout(() => location.reload(), 500);
+      return;
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) location.reload();
+    });
+  }
+
+  // Updates should arrive every PATCH_MS; track how far off they are.
+  private measureJitter() {
+    const now = performance.now();
+    const gap = now - this.lastPatchAt;
+    this.lastPatchAt = now;
+    if (gap < 500) this.jitter += (Math.abs(gap - PATCH_MS) - this.jitter) * 0.1; // ignore quiet spells
+  }
+
+  private addSnapshot(r: Remote, player: PlayerState) {
+    const now = performance.now();
+    const last = r.snaps[r.snaps.length - 1];
+    // Nothing is sent while a player stands still. Start their next move from just before this
+    // update, not from when they stopped, or they'd crawl through the first part.
+    if (last && now - last.t > PATCH_MS * 3) r.snaps.push({ ...last, t: now - PATCH_MS });
+    r.snaps.push(snapshotOf(player, now));
+  }
+
+  // Draw each other player where they were interpDelay ms ago, between the two updates around then.
   private updateRemotes(delta: number) {
-    const t = 1 - Math.exp(-delta / 60);
+    const target = Phaser.Math.Clamp(PATCH_MS * 1.5 + this.jitter * 3, 80, 300);
+    this.interpDelay += (target - this.interpDelay) * Math.min(1, delta / 1000); // change it gently
+    const t = performance.now() - this.interpDelay;
     for (const r of this.remotes.values()) {
-      r.shown.gx += (r.state.x - r.shown.gx) * t;
-      r.shown.gy += (r.state.y - r.shown.gy) * t;
-      r.shown.z += (r.state.z - r.shown.z) * t;
-      this.showCharacter(r.view, r.shown);
-      r.view.setMotion({ x: r.state.dirX, y: r.state.dirY }, !this.world!.isOnGround(bodyOf(r.state)));
+      const s = r.snaps;
+      while (s.length > 2 && s[1].t <= t) s.shift();
+      const a = s[0];
+      const b = s[1] ?? a;
+      const f = b.t > a.t ? Phaser.Math.Clamp((t - a.t) / (b.t - a.t), 0, 1) : 1;
+      const shown: Body = {
+        gx: a.x + (b.x - a.x) * f,
+        gy: a.y + (b.y - a.y) * f,
+        z: a.z + (b.z - a.z) * f,
+        vz: 0,
+      };
+      const dir = f > 0 ? b : a;
+      this.showCharacter(r.view, shown);
+      r.view.setMotion({ x: dir.dirX, y: dir.dirY }, shown.z > this.world!.groundUnder(shown.gx, shown.gy) + 0.01);
     }
   }
 
@@ -348,6 +452,29 @@ export class WorldScene extends Phaser.Scene {
 }
 
 const bodyOf = (p: PlayerState): Body => ({ gx: p.x, gy: p.y, z: p.z, vz: p.vz });
+
+const snapshotOf = (p: PlayerState, t: number): Snapshot => ({
+  t,
+  x: p.x,
+  y: p.y,
+  z: p.z,
+  dirX: p.dirX,
+  dirY: p.dirY,
+});
+
+// A random id for this browser tab that survives reloads (see JoinOptions.key).
+function tabKey() {
+  try {
+    let key = sessionStorage.getItem('playerKey');
+    if (!key) {
+      key = Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(36)).join('');
+      sessionStorage.setItem('playerKey', key);
+    }
+    return key;
+  } catch {
+    return undefined; // storage blocked: we just start at spawn after a reconnect
+  }
+}
 
 // A position part-way (t = 0..1) from a to b.
 const blend = (a: Body, b: Body, t: number): Body => ({

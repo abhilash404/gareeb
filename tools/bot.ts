@@ -2,7 +2,7 @@
 // Usage: npm run bot            (runs until you press Ctrl+C)
 //        npm run bot -- 10      (leaves after 10 seconds)
 import { Callbacks, Client } from '@colyseus/sdk';
-import { ROOM_NAME, SERVER_PORT, WorldState } from '../shared/protocol';
+import { ROOM_NAME, SERVER_PORT, HEARTBEAT_MS, WorldState } from '../shared/protocol';
 import { TICK_MS } from '../shared/world';
 
 const seconds = Number(process.argv[2]) || Infinity;
@@ -21,6 +21,9 @@ const pick = () => (dir = { x: Math.floor(Math.random() * 3) - 1, y: Math.floor(
 const turn = setInterval(pick, 1500);
 // Holds jump now and then, so it can get up steps.
 const move = setInterval(() => room.send('input', { seq: ++seq, ...dir, j: Math.random() < 0.05 ? 1 : 0 }), TICK_MS);
+// Like a browser, say we're still here, or the server drops us when we stand still.
+const ping = setInterval(() => room.send('ping', { t: performance.now() }), HEARTBEAT_MS);
+room.onMessage('pong', () => {});
 const report = setInterval(() => {
   const me = room.state.players.get(room.sessionId);
   if (me) {
@@ -32,7 +35,7 @@ pick();
 
 if (seconds !== Infinity) {
   setTimeout(async () => {
-    [turn, move, report].forEach(clearInterval);
+    [turn, move, ping, report].forEach(clearInterval);
     await room.leave();
     process.exit(0);
   }, seconds * 1000);

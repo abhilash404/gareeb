@@ -3,6 +3,21 @@ import { schema, t, type SchemaType } from '@colyseus/schema';
 
 export const SERVER_PORT = 2567;
 export const ROOM_NAME = 'world';
+export const PATCH_MS = 50; // the server sends state changes this often
+
+// Sent when joining. `key` is a random id kept per browser tab: if you drop out and rejoin,
+// the server puts you back where you were instead of at spawn.
+export type JoinOptions = { key?: string };
+
+// Browser -> server about once a second, from the game loop: "my game is still running".
+// The server answers 'pong' with the same t, so the browser can show its ping.
+// A player whose game stops sending (crashed, or tab in the background) is removed.
+export type PingMessage = { t: number };
+export const HEARTBEAT_MS = 1000;
+export const SILENT_KICK_MS = 10_000;
+// Close code when another tab with the same key took over this player (e.g. a duplicated tab).
+// That tab must not rejoin, or the two would keep kicking each other out.
+export const TAKEN_OVER = 4001;
 
 // Browser -> server, once per movement tick while moving, jumping or falling (and once when stopping).
 // x/y: screen direction (-1, 0, 1); j: 1 while jump is held.

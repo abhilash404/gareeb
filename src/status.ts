@@ -11,3 +11,11 @@ export function showPing(ms: number) {
   el.textContent = `${Math.round(ms)} ms`;
   el.style.color = ms < 150 ? '#9be89b' : ms < 300 ? '#f0d36b' : '#ff7b7b';
 }
+
+// The tile we're standing on and the height of our feet, in the top-left corner.
+// Only touches the page when the text changes, since this is called every frame.
+export function showCoords(gx: number, gy: number, z: number) {
+  const el = document.getElementById('coords')!;
+  const text = `X ${Math.floor(gx)}  Y ${Math.floor(gy)}  Z ${Math.floor(z)}`;
+  if (el.textContent !== text) el.textContent = text;
+}

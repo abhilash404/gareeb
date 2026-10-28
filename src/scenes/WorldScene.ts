@@ -19,7 +19,7 @@ import {
 } from '../../shared/protocol';
 import { CharacterView } from '../CharacterView';
 import { TerrainView } from '../TerrainView';
-import { showStatus, showPing } from '../status';
+import { showStatus, showPing, showCoords } from '../status';
 
 // Where another player was when an update about them arrived (t = performance.now()).
 type Snapshot = { t: number; x: number; y: number; z: number; dirX: number; dirY: number };
@@ -156,6 +156,7 @@ export class WorldScene extends Phaser.Scene {
     this.me!.setMotion(input, !world.isOnGround(this.myBody));
     this.centerCamera(this.me!);
     this.terrain!.update(shown.gx, shown.gy);
+    showCoords(shown.gx, shown.gy, shown.z);
   }
 
   // Keep our character in the middle of the screen. The camera moves in whole screen pixels

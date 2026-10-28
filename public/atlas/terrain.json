@@ -140,9 +140,69 @@
     "h": 32
    }
   },
-  "tile_hover": {
+  "planks": {
    "frame": {
     "x": 0,
+    "y": 34,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "tile_hover": {
+   "frame": {
+    "x": 34,
+    "y": 34,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "face_left": {
+   "frame": {
+    "x": 68,
+    "y": 34,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "face_right": {
+   "frame": {
+    "x": 102,
     "y": 34,
     "w": 32,
     "h": 32
@@ -162,7 +222,7 @@
   },
   "tree": {
    "frame": {
-    "x": 34,
+    "x": 136,
     "y": 34,
     "w": 32,
     "h": 48
@@ -182,7 +242,7 @@
   },
   "rock": {
    "frame": {
-    "x": 68,
+    "x": 170,
     "y": 34,
     "w": 16,
     "h": 12
@@ -202,7 +262,7 @@
   },
   "shadow": {
    "frame": {
-    "x": 86,
+    "x": 188,
     "y": 34,
     "w": 24,
     "h": 12
@@ -222,7 +282,7 @@
   },
   "grass_0_rimL": {
    "frame": {
-    "x": 112,
+    "x": 214,
     "y": 34,
     "w": 32,
     "h": 32
@@ -242,8 +302,8 @@
   },
   "grass_0_rimR": {
    "frame": {
-    "x": 146,
-    "y": 34,
+    "x": 0,
+    "y": 84,
     "w": 32,
     "h": 32
    },
@@ -262,8 +322,8 @@
   },
   "grass_0_rimLR": {
    "frame": {
-    "x": 180,
-    "y": 34,
+    "x": 34,
+    "y": 84,
     "w": 32,
     "h": 32
    },
@@ -282,8 +342,8 @@
   },
   "grass_1_rimL": {
    "frame": {
-    "x": 214,
-    "y": 34,
+    "x": 68,
+    "y": 84,
     "w": 32,
     "h": 32
    },
@@ -302,7 +362,7 @@
   },
   "grass_1_rimR": {
    "frame": {
-    "x": 0,
+    "x": 102,
     "y": 84,
     "w": 32,
     "h": 32
@@ -322,7 +382,7 @@
   },
   "grass_1_rimLR": {
    "frame": {
-    "x": 34,
+    "x": 136,
     "y": 84,
     "w": 32,
     "h": 32
@@ -342,7 +402,7 @@
   },
   "grass_2_rimL": {
    "frame": {
-    "x": 68,
+    "x": 170,
     "y": 84,
     "w": 32,
     "h": 32
@@ -362,7 +422,7 @@
   },
   "grass_2_rimR": {
    "frame": {
-    "x": 102,
+    "x": 204,
     "y": 84,
     "w": 32,
     "h": 32
@@ -382,66 +442,6 @@
   },
   "grass_2_rimLR": {
    "frame": {
-    "x": 136,
-    "y": 84,
-    "w": 32,
-    "h": 32
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 32,
-    "h": 32
-   },
-   "sourceSize": {
-    "w": 32,
-    "h": 32
-   }
-  },
-  "stone_rimL": {
-   "frame": {
-    "x": 170,
-    "y": 84,
-    "w": 32,
-    "h": 32
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 32,
-    "h": 32
-   },
-   "sourceSize": {
-    "w": 32,
-    "h": 32
-   }
-  },
-  "stone_rimR": {
-   "frame": {
-    "x": 204,
-    "y": 84,
-    "w": 32,
-    "h": 32
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 32,
-    "h": 32
-   },
-   "sourceSize": {
-    "w": 32,
-    "h": 32
-   }
-  },
-  "stone_rimLR": {
-   "frame": {
     "x": 0,
     "y": 118,
     "w": 32,
@@ -460,7 +460,7 @@
     "h": 32
    }
   },
-  "sand_rimL": {
+  "dirt_rimL": {
    "frame": {
     "x": 34,
     "y": 118,
@@ -480,7 +480,7 @@
     "h": 32
    }
   },
-  "sand_rimR": {
+  "dirt_rimR": {
    "frame": {
     "x": 68,
     "y": 118,
@@ -500,10 +500,190 @@
     "h": 32
    }
   },
-  "sand_rimLR": {
+  "dirt_rimLR": {
    "frame": {
     "x": 102,
     "y": 118,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "stone_rimL": {
+   "frame": {
+    "x": 136,
+    "y": 118,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "stone_rimR": {
+   "frame": {
+    "x": 170,
+    "y": 118,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "stone_rimLR": {
+   "frame": {
+    "x": 204,
+    "y": 118,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "sand_rimL": {
+   "frame": {
+    "x": 0,
+    "y": 152,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "sand_rimR": {
+   "frame": {
+    "x": 34,
+    "y": 152,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "sand_rimLR": {
+   "frame": {
+    "x": 68,
+    "y": 152,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "planks_rimL": {
+   "frame": {
+    "x": 102,
+    "y": 152,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "planks_rimR": {
+   "frame": {
+    "x": 136,
+    "y": 152,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   }
+  },
+  "planks_rimLR": {
+   "frame": {
+    "x": 170,
+    "y": 152,
     "w": 32,
     "h": 32
    },
@@ -525,7 +705,7 @@
   "image": "terrain.png",
   "size": {
    "w": 256,
-   "h": 150
+   "h": 184
   },
   "scale": "1"
  }

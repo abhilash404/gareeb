@@ -199,6 +199,48 @@ const waterBlock = () =>
     seam: hex('#3f8ccb'),
   });
 
+// Wooden planks (placed from wood): boards on top, horizontal boards on the sides.
+function planksBlock() {
+  const r = rng(6001);
+  const img = new Img(32, 32);
+  const c = {
+    top: hex('#c19358'),
+    topSpeck: hex('#cfa266'),
+    left: hex('#a87a46'),
+    right: hex('#8c6237'),
+    speck: hex('#9a6e3e'),
+    seam: hex('#6e4a28'),
+  };
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const f = cubeFace(x, y);
+      if (!f) continue;
+      if (f.face === 'top') {
+        // Boards run parallel to the top face's back-left edge.
+        const board = Math.floor(y + 0.5 + (x + 0.5) / 2);
+        img.set(x, y, f.d > 0.88 || board % 6 === 0 ? c.seam : r() < 0.1 ? c.topSpeck : c.top);
+      } else {
+        const seam = Math.floor(f.down) % 5 === 0;
+        img.set(x, y, seam ? c.seam : r() < 0.1 ? c.speck : f.face === 'left' ? c.left : c.right);
+      }
+    }
+  }
+  return img;
+}
+
+// Outline of a block's left (front-left) or right (front-right) side, for aiming at walls.
+function faceOutline(side) {
+  const img = new Img(32, 32);
+  const white = hex('#ffffff', 220);
+  const on = (x, y) => cubeFace(x, y)?.face === side;
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      if (on(x, y) && !(on(x - 1, y) && on(x + 1, y) && on(x, y - 1) && on(x, y + 1))) img.set(x, y, white);
+    }
+  }
+  return img;
+}
+
 // A light line along one back edge of a block's top face, drawn where the ground
 // behind it is lower, so ledges stay visible even when their wall faces away from the camera.
 function rimTile(side) {
@@ -381,7 +423,10 @@ dirtBlock().save('dirt.png');
 stoneBlock().save('stone.png');
 sandBlock().save('sand.png');
 waterBlock().save('water.png');
+planksBlock().save('planks.png');
 hoverTile().save('tile_hover.png');
+faceOutline('left').save('face_left.png');
+faceOutline('right').save('face_right.png');
 rimTile('left').save('rim_left.png');
 rimTile('right').save('rim_right.png');
 tree().save('tree.png');

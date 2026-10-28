@@ -12,6 +12,15 @@ export function showPing(ms: number) {
   el.style.color = ms < 150 ? '#9be89b' : ms < 300 ? '#f0d36b' : '#ff7b7b';
 }
 
+// A short message above the hotbar (e.g. "+3 Wood") that fades away.
+export function showToast(text: string) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  document.getElementById('toasts')!.append(el);
+  setTimeout(() => el.remove(), 1600);
+}
+
 // The tile we're standing on and the height of our feet, in the top-left corner.
 // Only touches the page when the text changes, since this is called every frame.
 export function showCoords(gx: number, gy: number, z: number) {

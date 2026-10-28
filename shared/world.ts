@@ -1,5 +1,6 @@
 // Rules shared by the browser and the server, so both agree on where players can go.
-import { CHUNK, SEA_LEVEL, PROP_KINDS, generateChunk, blockType, type Chunk, type PropKind } from './terrain';
+import { CHUNK, SEA_LEVEL, BUILD_LIMIT, PROP_KINDS, generateChunk, blockType, type BlockType, type Chunk, type PropKind } from './terrain';
+import { ITEM_FROM_BLOCK } from './items';
 
 export const TICK_MS = 1000 / 60; // one movement step; same on client and server
 const DT = TICK_MS / 1000;
@@ -8,7 +9,9 @@ const RADIUS = 0.2; // half the player's width, in tiles
 const GRAVITY = 40; // blocks per second²
 const MAX_FALL = 20; // blocks per second
 const JUMP_CLEARANCE = 0.25; // extra height above the ledge, so a 1-block jump clears a 1-block step
-export const REACH = 1; // how far away (in tiles) you can interact with something
+export const REACH = 1; // how far away (in tiles) you can hit trees and rocks
+export const BUILD_REACH = 3; // how far away (in tiles) you can place and break blocks
+const CHARACTER_HEIGHT = 1.4; // in blocks
 
 // A character's position. gx/gy are in tiles; z is the height of their feet in blocks;
 // vz is their vertical speed (up is positive).
@@ -26,6 +29,7 @@ export class World {
   readonly spawn: Body;
   private chunks = new Map<string, Chunk>(); // generated on demand and kept
   private removed = new Set<string>(); // props destroyed by players, keyed "x,y"
+  private edits = new Map<string, BlockType[]>(); // columns players changed, bottom block first
 
   constructor(readonly seed: number) {
     this.spawn = this.findSpawn();
@@ -52,15 +56,69 @@ export class World {
 
   // Height of the top of the column, including water.
   surface(gx: number, gy: number) {
+    const edited = this.edits.get(key2(Math.floor(gx), Math.floor(gy)));
+    if (edited) return edited.length;
     return Math.max(this.ground(gx, gy), SEA_LEVEL);
   }
 
   isWater(gx: number, gy: number) {
+    const edited = this.edits.get(key2(Math.floor(gx), Math.floor(gy)));
+    if (edited) return edited[edited.length - 1] === 'water';
     return this.ground(gx, gy) < SEA_LEVEL;
   }
 
-  blockAt(x: number, y: number, z: number) {
+  blockAt(x: number, y: number, z: number): BlockType | null {
+    const edited = this.edits.get(key2(x, y));
+    if (edited) return edited[z] ?? null;
     return blockType(this.ground(x, y), z);
+  }
+
+  // ---------- Building ----------
+
+  // The blocks of a column, bottom first (a copy, safe to change).
+  column(x: number, y: number): BlockType[] {
+    const blocks: BlockType[] = [];
+    const top = this.surface(x, y);
+    for (let z = 0; z < top; z++) blocks.push(this.blockAt(x, y, z)!);
+    return blocks;
+  }
+
+  // Replace a column's blocks (a player built or dug there).
+  setColumn(x: number, y: number, blocks: BlockType[]) {
+    this.edits.set(key2(x, y), blocks);
+  }
+
+  // Every column players have changed, as ["x,y", blocks].
+  editedColumns() {
+    return this.edits.entries();
+  }
+
+  // Can a block go on top of column (x, y)? Not on water, trees or rocks, or above the build limit.
+  // (The server also checks nobody is standing in the way.)
+  canPlaceOn(x: number, y: number) {
+    return !this.isWater(x, y) && !this.propAt(x, y) && this.surface(x, y) < BUILD_LIMIT;
+  }
+
+  // The top block of column (x, y) if it can be broken: not water, nothing standing on it,
+  // and never the bottom block (so there's no hole to fall out of the world through).
+  breakableTop(x: number, y: number): BlockType | null {
+    const top = this.surface(x, y);
+    if (top <= 1 || this.propAt(x, y)) return null;
+    const type = this.blockAt(x, y, top - 1);
+    return type && ITEM_FROM_BLOCK[type] ? type : null;
+  }
+
+  // Is column (x, y) within building reach of a character? `slack` lets the server allow for lag.
+  inBuildReach(b: Body, x: number, y: number, slack = 0) {
+    const dx = Math.max(x - b.gx, 0, b.gx - (x + 1));
+    const dy = Math.max(y - b.gy, 0, b.gy - (y + 1));
+    return Math.max(dx, dy) <= BUILD_REACH + slack && Math.abs(this.surface(x, y) - b.z) <= BUILD_REACH + 1 + slack;
+  }
+
+  // Would a block at height z on column (x, y) be inside this character?
+  overlapsBlock(b: Body, x: number, y: number, z: number) {
+    if (b.z >= z + 1 || b.z + CHARACTER_HEIGHT <= z) return false;
+    return corners(b.gx, b.gy).some(([cx, cy]) => Math.floor(cx) === x && Math.floor(cy) === y);
   }
 
   hasBlock(x: number, y: number, z: number) {

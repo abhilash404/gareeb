@@ -3,10 +3,26 @@
 
 export const CHUNK = 16; // chunks are CHUNK x CHUNK columns
 export const SEA_LEVEL = 3; // ground lower than this is under water
-export const MAX_HEIGHT = 14;
+export const MAX_HEIGHT = 14; // highest generated ground
+export const BUILD_LIMIT = 24; // players can build up to this height
 const STONE_PEAKS = 10; // ground this high has a bare stone top
 
-export type BlockType = 'grass' | 'dirt' | 'stone' | 'sand' | 'water';
+export type BlockType = 'grass' | 'dirt' | 'stone' | 'sand' | 'water' | 'planks';
+
+// One letter per block type, for storing and sending edited columns compactly as strings.
+export const BLOCK_CODE: Record<BlockType, string> = {
+  grass: 'g',
+  dirt: 'd',
+  stone: 's',
+  sand: 'a',
+  water: 'w',
+  planks: 'p',
+};
+export const BLOCK_OF_CODE = Object.fromEntries(
+  Object.entries(BLOCK_CODE).map(([type, code]) => [code, type]),
+) as Record<string, BlockType>;
+export const encodeColumn = (blocks: BlockType[]) => blocks.map((b) => BLOCK_CODE[b]).join('');
+export const decodeColumn = (s: string) => [...s].map((c) => BLOCK_OF_CODE[c]).filter(Boolean);
 export type PropKind = 'tree' | 'rock';
 
 export type Chunk = {

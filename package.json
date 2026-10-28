@@ -11,6 +11,7 @@
     "client": "vite",
     "bot": "tsx tools/bot.ts",
     "build": "npm run atlas && tsc --noEmit && vite build",
+    "start": "tsx server/index.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -18,12 +19,14 @@
     "@colyseus/sdk": "^0.18.8",
     "colyseus": "^0.18.10",
     "express": "^5.1.0",
+    "pg": "^8.23.1",
     "phaser": "^3.90.0",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "concurrently": "^10.0.6",
     "pngjs": "^7.0.0",
     "typescript": "^5.8.3",

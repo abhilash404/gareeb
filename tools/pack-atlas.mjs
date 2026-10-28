@@ -8,8 +8,11 @@ import { PNG } from 'pngjs';
 
 const SRC = path.resolve('public/assets');
 const OUT = path.resolve('public/atlas');
-const SPRITES = ['grass_0', 'grass_1', 'grass_2', 'dirt', 'stone', 'sand', 'water', 'tile_hover', 'tree', 'rock', 'shadow'];
-const CAN_HAVE_RIMS = ['grass_0', 'grass_1', 'grass_2', 'stone', 'sand']; // blocks that can be the top of a ledge
+const SPRITES = [
+  'grass_0', 'grass_1', 'grass_2', 'dirt', 'stone', 'sand', 'water', 'planks',
+  'tile_hover', 'face_left', 'face_right', 'tree', 'rock', 'shadow',
+];
+const CAN_HAVE_RIMS = ['grass_0', 'grass_1', 'grass_2', 'dirt', 'stone', 'sand', 'planks']; // can be the top of a ledge
 const ATLAS_WIDTH = 256;
 const PAD = 2; // empty pixels between sprites so they never bleed into each other
 

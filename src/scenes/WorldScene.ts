@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
 import { Callbacks, Client, type Room } from '@colyseus/sdk';
-import { gridToScreen, screenToGrid, depth, ZOOM } from '../iso';
+import { gridToScreen, depth, ZOOM } from '../iso';
 import { World, TICK_MS, DEFAULT_STATS, type Body, type Stats } from '../../shared/world';
-import { MAX_HEIGHT } from '../../shared/terrain';
+import { decodeColumn } from '../../shared/terrain';
+import { ITEMS, type ItemType } from '../../shared/items';
 import {
   ROOM_NAME,
   SERVER_PORT,
   SCARF_COLORS,
   ACTION_COOLDOWN_MS,
+  BUILD_COOLDOWN_MS,
   PATCH_MS,
   HEARTBEAT_MS,
   TAKEN_OVER,
@@ -16,10 +18,16 @@ import {
   type JoinOptions,
   type PlayerState,
   type PropState,
+  type ColumnState,
 } from '../../shared/protocol';
 import { CharacterView } from '../CharacterView';
 import { TerrainView } from '../TerrainView';
-import { showStatus, showPing, showCoords } from '../status';
+import { Hotbar } from '../hotbar';
+import { pickBlock, placeTarget, type BlockHit } from '../picking';
+import { showStatus, showPing, showCoords, showToast } from '../status';
+
+// What the pointer is on: a tree/rock, or a face of a block.
+type Target = { kind: 'prop'; x: number; y: number; h: number } | ({ kind: 'block' } & BlockHit);
 
 // Where another player was when an update about them arrived (t = performance.now()).
 type Snapshot = { t: number; x: number; y: number; z: number; dirX: number; dirY: number };
@@ -60,7 +68,10 @@ export class WorldScene extends Phaser.Scene {
   private seq = 0;
   private wasMoving = false;
   private tickTime = 0;
-  private lastAction = 0;
+  private lastAction = 0; // this.time.now of our last hit on a tree/rock
+  private lastBuild = 0; // ... and of our last block placed or broken
+  private hotbar!: Hotbar;
+  private carried: Partial<Record<ItemType, number>> = {}; // last known inventory, to spot pickups
 
   private remotes = new Map<string, Remote>();
   // Other players are drawn this far in the past, gliding between the updates the server sent.
@@ -95,8 +106,26 @@ export class WorldScene extends Phaser.Scene {
       string,
       Phaser.Input.Keyboard.Key
     >;
+    // Left click: hit trees/rocks, break blocks. Right click: place the selected item.
+    this.input.mouse!.disableContextMenu();
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.leftButtonDown()) this.tryInteract(p);
+      if (p.rightButtonDown()) this.tryPlace(p);
+      else if (p.leftButtonDown()) this.tryHit(p);
+    });
+
+    // Hotbar: number keys or the mouse wheel pick an item.
+    const atlas = this.textures.get('terrain');
+    const sheet = atlas.getSourceImage() as HTMLImageElement;
+    this.hotbar = new Hotbar('atlas/terrain.png', (name) => {
+      const f = atlas.get(name);
+      return { x: f.cutX, y: f.cutY, w: f.cutWidth, h: f.cutHeight, sheetW: sheet.width, sheetH: sheet.height };
+    });
+    this.input.keyboard!.on('keydown', (e: KeyboardEvent) => {
+      const n = Number(e.key);
+      if (n >= 1 && n <= ITEMS.length) this.hotbar.select(n - 1);
+    });
+    this.input.on('wheel', (_p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
+      this.hotbar.scroll(Math.sign(dy));
     });
 
     const cam = this.cameras.main;
@@ -249,6 +278,13 @@ export class WorldScene extends Phaser.Scene {
       callbacks.listen(prop, 'hp', () => this.propChanged(prop, true), false);
     });
 
+    // Columns players built on or dug into. These come before players, so the terrain we draw
+    // around ourselves on arrival already includes them.
+    callbacks.onAdd('columns', (column) => {
+      this.columnChanged(column);
+      callbacks.listen(column, 'blocks', () => this.columnChanged(column), false);
+    });
+
     callbacks.onAdd('players', (player, id) => {
       if (id === room.sessionId ? this.me : this.remotes.has(id)) return; // already shown
       const view = new CharacterView(this, SCARF_COLORS[player.color]);
@@ -261,6 +297,14 @@ export class WorldScene extends Phaser.Scene {
         this.centerCamera(view);
         this.terrain!.update(body.gx, body.gy, true);
         callbacks.onChange(player, () => this.reconcile(player));
+        // Our inventory: refresh the hotbar whenever an item count changes.
+        const refresh = () => this.inventoryChanged(player);
+        callbacks.onAdd(player, 'inventory', refresh);
+        callbacks.onChange(player, 'inventory', refresh);
+        callbacks.onRemove(player, 'inventory', refresh);
+        this.carried = {}; // so items we already had when (re)joining don't pop up as pickups
+        for (const item of ITEMS) this.carried[item.type] = player.inventory.get(item.type) ?? 0;
+        refresh();
       } else {
         const remote: Remote = { view, snaps: [snapshotOf(player, performance.now())] };
         this.remotes.set(id, remote);
@@ -300,6 +344,23 @@ export class WorldScene extends Phaser.Scene {
     this.tweens.killTweensOf(view.image);
     view.image.x = view.baseX;
     this.tweens.add({ targets: view.image, x: view.baseX + 1, duration: 40, yoyo: true, repeat: 2 });
+  }
+
+  // A column was built on or dug into: update the world (so collisions match) and redraw it.
+  private columnChanged(column: ColumnState) {
+    this.world!.setColumn(column.x, column.y, decodeColumn(column.blocks));
+    this.terrain!.columnChanged(column.x, column.y);
+  }
+
+  // Our item counts changed: update the hotbar and announce pickups.
+  private inventoryChanged(player: PlayerState) {
+    const countOf = (item: ItemType) => player.inventory.get(item) ?? 0;
+    this.hotbar.setCounts(countOf);
+    for (const item of ITEMS) {
+      const gained = countOf(item.type) - (this.carried[item.type] ?? 0);
+      if (gained > 0) showToast(`+${gained} ${item.name}`);
+      this.carried[item.type] = countOf(item.type);
+    }
   }
 
   // The server says where we were after input #seq. Start from there and
@@ -382,57 +443,106 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------- Interaction ----------
 
-  private tryInteract(pointer: Phaser.Input.Pointer) {
+  // Left click: hit the tree/rock, or break the block, under the pointer.
+  private tryHit(pointer: Phaser.Input.Pointer) {
     const world = this.world;
-    const target = this.targetAt(pointer);
-    if (!world || !target || !this.room || !this.me) return;
-    if (!world.propAt(target.x, target.y)) return;
-    if (!world.inReach(this.myBody, target.x, target.y)) return;
+    const t = this.targetAt(pointer);
+    if (!world || !t || !this.room || !this.me) return;
     const now = this.time.now;
-    if (now - this.lastAction < ACTION_COOLDOWN_MS) return;
-    this.lastAction = now;
 
-    // Swing straight away (don't wait for the server), facing the target.
-    const from = gridToScreen(this.myBody.gx, this.myBody.gy);
-    const to = gridToScreen(target.x + 0.5, target.y + 0.5);
-    this.me.playAction(Math.sign(to.x - from.x), Math.sign(to.y - from.y));
-    this.room.send('interact', { x: target.x, y: target.y });
+    if (t.kind === 'prop') {
+      if (!world.inReach(this.myBody, t.x, t.y) || now - this.lastAction < ACTION_COOLDOWN_MS) return;
+      this.lastAction = now;
+      this.swingAt(t.x, t.y);
+      this.room.send('interact', { x: t.x, y: t.y });
+      return;
+    }
+    if (!this.canBreak(t) || now - this.lastBuild < BUILD_COOLDOWN_MS) return;
+    this.lastBuild = now;
+    this.swingAt(t.x, t.y);
+    this.room.send('break', { x: t.x, y: t.y });
   }
 
-  // The tile the pointer is on: a tree/rock sprite under it wins, otherwise the top face under it.
-  private targetAt(pointer: Phaser.Input.Pointer): { x: number; y: number; h: number } | null {
+  // Right click: put the selected item on the column under the pointer (or beside the clicked side).
+  private tryPlace(pointer: Phaser.Input.Pointer) {
+    const t = this.targetAt(pointer);
+    if (!t || t.kind !== 'block' || !this.room || !this.me) return;
+    const item = this.hotbar.item;
+    if ((this.carried[item] ?? 0) < 1) {
+      showToast(`No ${ITEMS.find((i) => i.type === item)!.name} to place`);
+      return;
+    }
+    const at = placeTarget(t);
+    const now = this.time.now;
+    if (!this.canPlaceAt(at.x, at.y) || now - this.lastBuild < BUILD_COOLDOWN_MS) return;
+    this.lastBuild = now;
+    this.swingAt(at.x, at.y);
+    this.room.send('place', { x: at.x, y: at.y, item });
+  }
+
+  // These mirror the server's checks, so we don't send requests it would refuse.
+  private canBreak(t: BlockHit) {
+    const w = this.world!;
+    return t.z === w.surface(t.x, t.y) - 1 && !!w.breakableTop(t.x, t.y) && w.inBuildReach(this.myBody, t.x, t.y);
+  }
+
+  private canPlaceAt(x: number, y: number) {
+    const w = this.world!;
+    return (
+      w.canPlaceOn(x, y) &&
+      w.inBuildReach(this.myBody, x, y) &&
+      !w.overlapsBlock(this.myBody, x, y, w.surface(x, y))
+    );
+  }
+
+  // Play our strike animation straight away (don't wait for the server), facing a tile.
+  private swingAt(x: number, y: number) {
+    const from = gridToScreen(this.myBody.gx, this.myBody.gy);
+    const to = gridToScreen(x + 0.5, y + 0.5);
+    this.me!.playAction(Math.sign(to.x - from.x), Math.sign(to.y - from.y));
+  }
+
+  // What the pointer is on: a tree/rock sprite wins, otherwise the block face under it.
+  private targetAt(pointer: Phaser.Input.Pointer): Target | null {
     const world = this.world;
     if (!world) return null;
     for (const obj of this.input.hitTestPointer(pointer)) {
       const tile = obj.getData('tile') as { x: number; y: number; h: number } | undefined;
-      if (tile) return tile;
+      if (tile) return { kind: 'prop', ...tile };
     }
     const p = pointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
-    // Look from the highest possible surface downwards: the first top face found
-    // there is the one nearest the camera.
-    for (let h = MAX_HEIGHT; h >= 1; h--) {
-      const g = screenToGrid(p.x, p.y, h);
-      const x = Math.floor(g.gx);
-      const y = Math.floor(g.gy);
-      if (world.surface(x, y) === h) return { x, y, h };
-    }
-    return null;
+    const hit = pickBlock(world, p.x, p.y);
+    return hit && { kind: 'block', ...hit };
   }
 
-  // Highlight the tile under the mouse; red if there's something there that's out of reach.
+  // Outline the face under the mouse: white if you can do something with it, red if not.
   private updateCursor() {
     const t = this.targetAt(this.input.activePointer);
     if (!t) {
       this.cursor.setVisible(false);
       return;
     }
-    const tooFar = !!this.world!.propAt(t.x, t.y) && !this.world!.inReach(this.myBody, t.x, t.y);
-    const pos = gridToScreen(t.x + 0.5, t.y + 0.5, t.h);
-    const d = depth.onSurface(t.x, t.y, t.h);
+    const { x, y } = t;
+    let frame = 'tile_hover';
+    let usable: boolean;
+    let z: number; // the block whose outline we draw
+    if (t.kind === 'prop') {
+      z = t.h - 1;
+      usable = this.world!.inReach(this.myBody, t.x, t.y);
+    } else {
+      z = t.z;
+      if (t.face !== 'top') frame = `face_${t.face}`;
+      const at = placeTarget(t);
+      usable = this.canBreak(t) || this.canPlaceAt(at.x, at.y);
+    }
+    // Blocks are drawn from the centre of their top face (see TerrainView).
+    const pos = gridToScreen(x + 0.5, y + 0.5, z + 1);
+    const d = depth.block(x, y, z) + 0.5;
     if (this.cursor.depth !== d) this.cursor.setDepth(d); // re-sorting is costly; only when it changes
     this.cursor
+      .setFrame(frame)
       .setPosition(pos.x, pos.y)
-      .setTint(tooFar ? CURSOR_TOO_FAR : CURSOR_OK)
+      .setTint(usable ? CURSOR_OK : CURSOR_TOO_FAR)
       .setVisible(true);
   }
 

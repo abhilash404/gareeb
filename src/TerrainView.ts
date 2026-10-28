@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHUNK, MAX_HEIGHT, random, type PropKind } from '../shared/terrain';
+import { CHUNK, BUILD_LIMIT, random, type PropKind } from '../shared/terrain';
 import type { World } from '../shared/world';
 import { gridToScreen, depth, TILE_W, TILE_H, BLOCK_H } from './iso';
 
@@ -75,6 +75,21 @@ export class TerrainView {
     this.world.forgetChunksAwayFrom([{ gx, gy }], radius + UNLOAD_MARGIN + CHUNK);
   }
 
+  // A column changed (built on or dug into): redraw the chunks it and its neighbours are in.
+  // Neighbours matter because their hidden faces and ledge rims depend on this column's height.
+  columnChanged(x: number, y: number) {
+    const keys = new Set<string>();
+    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      keys.add(`${Math.floor((x + dx) / CHUNK)},${Math.floor((y + dy) / CHUNK)}`);
+    }
+    for (const key of keys) {
+      const chunk = this.chunks.get(key);
+      if (!chunk) continue;
+      this.unload(key);
+      this.load(chunk.cx, chunk.cy);
+    }
+  }
+
   removeProp(x: number, y: number) {
     const key = `${x},${y}`;
     const view = this.props.get(key);
@@ -120,7 +135,7 @@ export class TerrainView {
   private blockFrame(x: number, y: number, z: number, top: number) {
     const type = this.world.blockAt(x, y, z)!;
     const name = type === 'grass' ? `grass_${Math.floor(random(x, y, 999) * 3)}` : type;
-    if (z !== top - 1 || type === 'water' || type === 'dirt') return name;
+    if (z !== top - 1 || type === 'water') return name;
     const left = this.world.surface(x - 1, y) < top; // back-left neighbour
     const right = this.world.surface(x, y - 1) < top; // back-right neighbour
     if (left && right) return `${name}_rimLR`;
@@ -180,7 +195,7 @@ function chunkBounds(cx: number, cy: number) {
   const y0 = cy * CHUNK;
   const left = (x0 - (y0 + CHUNK)) * (TILE_W / 2) - TILE_W / 2;
   const right = (x0 + CHUNK - y0) * (TILE_W / 2) + TILE_W / 2;
-  const top = (x0 + y0) * (TILE_H / 2) - (MAX_HEIGHT + TREE_HEIGHT) * BLOCK_H;
+  const top = (x0 + y0) * (TILE_H / 2) - (BUILD_LIMIT + TREE_HEIGHT) * BLOCK_H;
   const bottom = (x0 + y0 + 2 * CHUNK) * (TILE_H / 2) + BLOCK_H;
   return new Phaser.Geom.Rectangle(left, top, right - left, bottom - top);
 }

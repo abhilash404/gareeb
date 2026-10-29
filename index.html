@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Isogame</title>
+    <title>Gareeb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet" />
     <style>
       html, body { margin: 0; height: 100%; background: #1b1b1f; overflow: hidden; }
       #status {
@@ -60,45 +63,92 @@
       #signout:hover { opacity: 1; }
       #signout[hidden] { display: none; }
 
-      /* Sign-in and character creation */
+      /* Welcome, sign-in and character creation. Pixel style: square corners, hard 3px borders,
+         stepped shadows instead of soft ones. */
       #screen {
+        --ink: #f4f1ff;
+        --panel: #2a2433;
+        --panel-dark: #1c1823;
+        --edge: #0e0b12;
+        --rim: #4b4159;
+        --gold: #f2b84b;
+        --gold-dark: #b9772a;
         position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
-        background: rgba(15, 14, 20, 0.82); color: #f4f1ff; font: 15px system-ui, sans-serif;
+        color: var(--ink); font: 16px 'Pixelify Sans', system-ui, sans-serif;
         overflow-y: auto;
       }
       #screen[hidden] { display: none; }
-      #screen .panel {
-        width: min(360px, 100%); padding: 24px; display: flex; flex-direction: column; gap: 10px;
-        background: #26232f; border: 2px solid #3b3648; border-radius: 10px;
+      /* The moving world shows through on the welcome screen; a vignette keeps the text readable. */
+      #screen.welcome { background: radial-gradient(ellipse at center, rgba(14, 11, 18, 0.15) 30%, rgba(14, 11, 18, 0.75) 100%); }
+      #screen.creating { background: rgba(14, 11, 18, 0.7); }
+      #screen .welcome-box {
+        display: flex; flex-direction: column; align-items: center; gap: 14px;
+        width: min(420px, 100%);
       }
-      #screen .panel.wide { width: min(640px, 100%); }
-      #screen h1 { margin: 0 0 6px; font-size: 22px; }
-      #screen label { font-size: 13px; opacity: 0.8; margin-top: 6px; }
-      #screen .hint { margin: 0; font-size: 12px; opacity: 0.65; }
-      #screen .error { margin: 0; min-height: 1.2em; color: #ff8a8a; font-size: 13px; }
+      #screen .logo {
+        width: min(639px, 92vw); /* 3x the art */
+        image-rendering: pixelated;
+        filter: drop-shadow(0 6px 0 rgba(14, 11, 18, 0.55));
+        animation: bob 3.2s steps(4) infinite;
+      }
+      #screen .tagline {
+        margin: -4px 0 6px; font-size: 18px; text-align: center;
+        text-shadow: 2px 2px 0 var(--edge);
+      }
+      #screen footer { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 14px; }
+      #screen footer a { color: var(--ink); opacity: 0.7; text-shadow: 2px 2px 0 var(--edge); }
+      #screen footer a:hover { opacity: 1; }
+
+      #screen .panel {
+        width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box;
+        background: var(--panel);
+        border: 3px solid var(--edge);
+        box-shadow: inset 0 0 0 3px var(--rim), 0 6px 0 rgba(14, 11, 18, 0.6);
+      }
+      #screen .panel.wide { width: min(660px, 100%); }
+      #screen h1 { margin: 0 0 6px; font-size: 26px; font-weight: 600; text-shadow: 2px 2px 0 var(--edge); }
+      #screen label { font-size: 14px; opacity: 0.8; margin-top: 6px; }
+      #screen .hint { margin: 0; font-size: 13px; opacity: 0.7; }
+      #screen .center { text-align: center; }
+      #screen .error { margin: 0; min-height: 1.2em; color: #ff8a8a; font-size: 14px; }
       #screen input {
         padding: 9px 10px; font: inherit; color: inherit;
-        background: #1b1922; border: 1px solid #4a4459; border-radius: 6px;
+        background: var(--panel-dark); border: 3px solid var(--edge); border-radius: 0;
+        box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.35);
       }
+      #screen input:focus { outline: none; border-color: var(--gold); }
       #screen button {
-        padding: 9px 12px; font: inherit; color: inherit; cursor: pointer;
-        background: #332f3f; border: 1px solid #4a4459; border-radius: 6px;
+        position: relative; padding: 9px 14px; font: inherit; color: inherit; cursor: pointer;
+        background: #3a3247; border: 3px solid var(--edge); border-radius: 0;
+        box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.3), inset 0 3px 0 rgba(255, 255, 255, 0.12);
       }
-      #screen button:hover { background: #3d384b; }
-      #screen button.primary { background: #6b46c1; border-color: #8a63e0; font-weight: 600; }
-      #screen button.primary:hover { background: #7a54d4; }
-      #screen button:disabled { opacity: 0.5; cursor: default; }
+      #screen button:hover { background: #463c55; }
+      #screen button:active { top: 2px; box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.3); }
+      #screen button.primary {
+        background: var(--gold); color: #2a1a08; font-weight: 600; font-size: 18px;
+        box-shadow: inset 0 -5px 0 var(--gold-dark), inset 0 3px 0 rgba(255, 255, 255, 0.35);
+      }
+      #screen button.primary:hover { background: #f7c865; }
+      #screen button.primary:active { box-shadow: inset 0 3px 0 var(--gold-dark); }
+      #screen button.google { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 14px; }
+      #screen .gicon { display: grid; place-items: center; width: 28px; height: 28px; background: #fff; border: 2px solid var(--edge); }
+      #screen button:disabled { opacity: 0.5; cursor: default; top: 0; }
       #screen .row { display: flex; gap: 8px; }
       #screen .row input { flex: 1; min-width: 0; }
       #screen .choices { display: flex; flex-wrap: wrap; gap: 6px; }
-      #screen .choices button.picked { background: #6b46c1; border-color: #8a63e0; }
+      #screen .choices button.picked { background: var(--gold); color: #2a1a08; box-shadow: inset 0 -4px 0 var(--gold-dark); }
       #screen .creator { display: flex; gap: 20px; flex-wrap: wrap; }
       #screen .stage {
         flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px;
-        padding: 12px; background: #1b1922; border-radius: 8px;
+        padding: 12px; background: var(--panel-dark); border: 3px solid var(--edge);
       }
       #screen .preview { width: 160px; height: 160px; image-rendering: pixelated; }
       #screen .options { flex: 1 1 260px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+      @keyframes bob {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-6px); }
+      }
+      @media (prefers-reduced-motion: reduce) { #screen .logo { animation: none; } }
       @keyframes toast {
         from { opacity: 0; transform: translateY(6px); }
         15% { opacity: 1; transform: none; }

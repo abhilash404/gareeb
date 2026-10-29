@@ -15,16 +15,33 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string,
 
 export function hideScreens() {
   screen().hidden = true;
+  screen().className = '';
   screen().replaceChildren();
 }
 
-// Sign-in screen. Google sign-in leaves the page and comes back signed in; the development
-// login (typing a name) resolves straight away.
+// Google's "G", drawn as a few pixel blocks to match the button.
+function googleIcon() {
+  const icon = el('span', { className: 'gicon' });
+  icon.innerHTML =
+    '<svg viewBox="0 0 8 8" width="20" height="20" shape-rendering="crispEdges">' +
+    '<path fill="#ea4335" d="M2 0h4v1h1v1H5V1H2z"/>' +
+    '<path fill="#fbbc05" d="M1 1h1v1H1v4H0V2h1z"/>' +
+    '<path fill="#34a853" d="M1 6h1v1h3v1H2V7H1z"/>' +
+    '<path fill="#4285f4" d="M4 3h4v3H7v1H5V6h1V5H4z"/></svg>';
+  return icon;
+}
+
+// Welcome screen: the logo over the moving world (TitleScene), and the sign-in buttons.
+// Google sign-in leaves the page and comes back signed in; the development login (typing a name)
+// resolves straight away.
 export function showLogin(config: LoginConfig): Promise<void> {
   return new Promise((resolve) => {
-    const panel = el('div', { className: 'panel' }, el('h1', { textContent: 'Welcome' }));
+    const panel = el('div', { className: 'panel' });
     if (config.supabaseUrl) {
-      panel.append(el('button', { className: 'primary', textContent: 'Sign in with Google', onclick: signInWithGoogle }));
+      panel.append(
+        el('button', { className: 'primary google', onclick: signInWithGoogle }, googleIcon(), 'Sign in with Google'),
+        el('p', { className: 'hint center', textContent: 'No password needed. We never see your Google password.' }),
+      );
     }
     if (config.devLogin) {
       const name = el('input', { placeholder: 'Test player name', maxLength: 32 });
@@ -43,7 +60,15 @@ export function showLogin(config: LoginConfig): Promise<void> {
     if (!config.supabaseUrl && !config.devLogin) {
       panel.append(el('p', { textContent: 'Sign-in is not set up on this server yet.' }));
     }
-    screen().replaceChildren(panel);
+    screen().className = 'welcome';
+    screen().replaceChildren(
+      el('div', { className: 'welcome-box' },
+        el('img', { className: 'logo', src: 'ui/logo.png', alt: 'Gareeb' }),
+        el('p', { className: 'tagline', textContent: 'Gather, build a home, and find your kingdom.' }),
+        panel,
+      ),
+      el('footer', {}, el('a', { href: 'privacy.html', textContent: 'Privacy' })),
+    );
     screen().hidden = false;
   });
 }
@@ -116,6 +141,7 @@ export function showCharacterCreation(): Promise<Character> {
         ),
       ),
     );
+    screen().className = 'creating';
     screen().replaceChildren(panel);
     screen().hidden = false;
     redraw();

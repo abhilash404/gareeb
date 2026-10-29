@@ -172,13 +172,14 @@ Players sign in with Google through Supabase; the game never sees or stores pass
 | `server/storage.ts` | Saves and loads worlds and player accounts: Postgres (`DATABASE_URL`) or files in `save/` |
 | `src/main.ts` | Sign in, make sure there's a character, then start Phaser |
 | `src/auth.ts` | Signing in and out, and calling the server's API |
-| `src/screens.ts` | The sign-in and character creation screens |
+| `src/screens.ts` | The welcome (sign-in) and character creation screens; the logo is `public/ui/logo.png` |
 | `src/characterSheets.ts` | Which sprite sheet each race/class uses, and its animation frames |
 | `src/iso.ts` | Grid ↔ screen maths and draw-order layers |
 | `src/TerrainView.ts` | Draws chunks near the player, removes far ones, redraws edited columns |
 | `src/picking.ts` | Finds the block and face under the mouse |
 | `src/hotbar.ts` | The item bar at the bottom of the screen |
 | `src/scenes/WorldScene.ts` | Connects to the server, prediction, other players, cursor, hitting/building |
+| `src/scenes/TitleScene.ts` | The welcome screen's background: an offline world the camera drifts over, with wandering characters |
 | `src/CharacterView.ts` | A character on screen: body, tinted scarf, shadow, animations |
 | `src/status.ts` | Status messages, ping, coordinates, pickup messages |
 | `tools/make-sprites.mjs` | Draws the placeholder sprites with code |

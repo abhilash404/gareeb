@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { TitleScene } from './scenes/TitleScene';
 import { WorldScene } from './scenes/WorldScene';
 import { loadLoginConfig, currentToken, api, signOut, type LoginConfig } from './auth';
 import { showLogin, showCharacterCreation, hideScreens } from './screens';
@@ -7,13 +8,14 @@ import { showStatus } from './status';
 import type { Character } from '../shared/characters';
 
 // Before the game: reach the server, sign in, make sure we have a character.
-async function boot() {
+// The welcome screen's moving world plays behind all of this.
+async function boot(game: Phaser.Game) {
   let config: LoginConfig;
   try {
     config = await loadLoginConfig();
   } catch {
     showStatus("Can't reach the game server. Retrying…");
-    setTimeout(boot, 3000);
+    setTimeout(() => boot(game), 3000);
     return;
   }
   showStatus(null);
@@ -25,14 +27,14 @@ async function boot() {
     await signOut(); // the login expired or was revoked: start again
     return;
   }
-  await loadCharacterManifest(); // before character creation, so its preview shows the real sprites
   if (!me.data.character) await showCharacterCreation();
   hideScreens();
 
   const signOutButton = document.getElementById('signout')!;
   signOutButton.hidden = false;
   signOutButton.onclick = () => signOut();
-  startGame();
+  game.scene.stop('title');
+  game.scene.start('world');
 }
 
 function startGame() {
@@ -46,11 +48,13 @@ function startGame() {
       width: window.innerWidth,
       height: window.innerHeight,
     },
-    scene: [WorldScene],
+    scene: [TitleScene, WorldScene], // only the first starts by itself
   });
 
   // Handy for poking at the game from the browser console while developing.
   if (import.meta.env.DEV) (window as any).game = game;
+  return game;
 }
 
-boot();
+// The sprite list comes first: the welcome screen, character creation and the game all use it.
+loadCharacterManifest().then(() => boot(startGame()));

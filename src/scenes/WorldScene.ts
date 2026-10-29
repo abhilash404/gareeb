@@ -24,7 +24,7 @@ import { Hotbar } from '../hotbar';
 import { pickBlock, placeTarget, type BlockHit } from '../picking';
 import { showStatus, showPing, showCoords, showToast } from '../status';
 import { currentToken, SERVER_URL } from '../auth';
-import { allSheets } from '../characterSheets';
+import { preloadArt } from '../preload';
 
 // What the pointer is on: a tree/rock, or a face of a block.
 type Target = { kind: 'prop'; x: number; y: number; h: number } | ({ kind: 'block' } & BlockHit);
@@ -89,14 +89,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   preload() {
-    // All world sprites come from one atlas (built by tools/pack-atlas.mjs), so they draw in one go.
-    this.load.atlas('terrain', 'atlas/terrain.png', 'atlas/terrain.json');
-    // Every race/class sheet that exists (they're small), plus the placeholder and its scarf layer.
-    for (const sheet of allSheets()) {
-      const size = { frameWidth: sheet.frameW, frameHeight: sheet.frameH };
-      this.load.spritesheet(sheet.key, sheet.url, size);
-      if (sheet.scarf) this.load.spritesheet(`${sheet.key}_scarf`, sheet.scarf, size);
-    }
+    preloadArt(this);
   }
 
   create() {

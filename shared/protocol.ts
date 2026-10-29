@@ -5,9 +5,9 @@ export const SERVER_PORT = 2567;
 export const ROOM_NAME = 'world';
 export const PATCH_MS = 50; // the server sends state changes this often
 
-// Sent when joining. `key` is a random id kept per browser tab: if you drop out and rejoin,
-// the server puts you back where you were instead of at spawn.
-export type JoinOptions = { key?: string };
+// Sent when joining: your login token. The server looks up your account and character with it,
+// and puts you back where you were with what you carried.
+export type JoinOptions = { token: string };
 
 // Browser -> server about once a second, from the game loop: "my game is still running".
 // The server answers 'pong' with the same t, so the browser can show its ping.
@@ -15,7 +15,7 @@ export type JoinOptions = { key?: string };
 export type PingMessage = { t: number };
 export const HEARTBEAT_MS = 1000;
 export const SILENT_KICK_MS = 10_000;
-// Close code when another tab with the same key took over this player (e.g. a duplicated tab).
+// Close code when another tab signed in to the same account took over this player.
 // That tab must not rejoin, or the two would keep kicking each other out.
 export const TAKEN_OVER = 4001;
 
@@ -33,13 +33,15 @@ export type PlaceMessage = { x: number; y: number; item: string };
 // Note: synced fields start out undefined, so the server must set every one.
 export const PlayerState = schema(
   {
+    name: t.string(),
+    race: t.string(), // see shared/characters.ts
+    cls: t.string(),
     x: t.float64(),
     y: t.float64(),
     z: t.float64(), // height of feet, in blocks
     vz: t.float64(), // vertical speed while jumping/falling
     dirX: t.int8(), // last pressed direction, for facing and walk animation
     dirY: t.int8(),
-    color: t.uint8(), // index into SCARF_COLORS
     seq: t.uint32(), // last input the server has applied for this player
     jumpHeight: t.float64(), // in blocks; potions or spells could raise it later
     actions: t.uint16(), // counts up every time this player strikes; others play the animation
@@ -82,7 +84,6 @@ export const WorldState = schema(
 );
 export type WorldState = SchemaType<typeof WorldState>;
 
-export const SCARF_COLORS = [0x8a55c4, 0xd94a4a, 0x3f8fe0, 0xe8b13a, 0x3cbf8a, 0xe06fb5, 0xf08a3c, 0xe8e8e8];
 export const PROP_HP: Record<string, number> = { tree: 3, rock: 4 };
 export const ACTION_COOLDOWN_MS = 350; // fastest you can strike
 export const BUILD_COOLDOWN_MS = 150; // fastest you can place or break blocks

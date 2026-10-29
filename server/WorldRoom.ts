@@ -4,7 +4,6 @@ import {
   PropState,
   ColumnState,
   WorldState,
-  SCARF_COLORS,
   PROP_HP,
   ACTION_COOLDOWN_MS,
   BUILD_COOLDOWN_MS,
@@ -21,13 +20,13 @@ import {
 import { World, TICK_MS, DEFAULT_STATS, type Body } from '../shared/world';
 import { encodeColumn, decodeColumn, type BlockType } from '../shared/terrain';
 import { ITEM_FROM_BLOCK, PROP_DROPS, MAX_STACK, isItem, blockOfItem, type ItemType } from '../shared/items';
-import { openStorage, type Storage, type SavedWorld } from './storage';
+import { getStorage, type Storage, type SavedWorld, type SavedPlayer } from './storage';
+import { accountOf } from './auth';
 
 // Inputs arrive in bursts over a laggy connection. After a 0.5s hiccup the server must be able to
 // catch up on all 30 queued steps, or they pile up for good and every later step arrives late.
 const MAX_QUEUED = 60; // inputs waiting per player; extra ones are dropped
 const MAX_BUDGET = 30; // most ticks a player can catch up on at once after lag
-const PARK_MS = 5 * 60_000; // how long a player who dropped out keeps their spot
 const SETTLE_AFTER_MS = 250; // if an airborne player sends nothing for this long, the server makes them fall anyway
 const REACH_SLACK = 0.5; // extra reach the server allows, since it sees players slightly behind
 const KEEP_CHUNKS_RADIUS = 48; // tiles around each player whose terrain the server keeps in memory
@@ -40,10 +39,8 @@ type Inbox = {
   lastAction: number; // Date.now() of the last hit on a tree/rock
   lastBuild: number; // Date.now() of the last block placed or broken
   lastHeard: number; // Date.now() of this player's last message
-  key: string | null; // from JoinOptions
+  account: string; // the login account playing this session
 };
-// Where a player was when they dropped out, so a rejoin puts them back.
-type Parked = { body: Body; color: number; inventory: Record<string, number>; at: number };
 
 // Which saved world this server runs. Change it to start a fresh world without deleting the old one.
 const WORLD_ID = process.env.WORLD_ID || 'main';
@@ -58,9 +55,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   state = new WorldState();
   private world!: World;
   private inboxes = new Map<string, Inbox>();
-  private parked = new Map<string, Parked>(); // keyed by JoinOptions.key
-  private sessionOfKey = new Map<string, string>();
-  private joined = 0;
+  private sessionOfAccount = new Map<string, string>(); // account -> the session playing it
+  private accounts = new Map<string, SavedPlayer>(); // saved records of everyone online, by account
   private storage?: Storage;
   private dirty = false; // changed since the last save
   private saving: Promise<void> | null = null;
@@ -106,15 +102,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           this.clients.getById(id)?.leave();
         }
       }
-      for (const [key, p] of this.parked) if (now - p.at > PARK_MS) this.parked.delete(key);
     }, 1000);
 
-    this.clock.setInterval(() => this.save(), SAVE_EVERY_MS);
+    this.clock.setInterval(() => {
+      this.save();
+      for (const id of this.inboxes.keys()) this.savePlayer(id);
+    }, SAVE_EVERY_MS);
   }
 
   // The server is shutting down (e.g. Render restarting it): save what's left.
   async onDispose() {
-    await this.save();
+    await Promise.all([this.save(), ...[...this.inboxes.keys()].map((id) => this.savePlayer(id))]);
   }
 
   // Note that a player's game is still running; returns their inbox.
@@ -124,30 +122,40 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     return inbox;
   }
 
-  onJoin(client: Client, options?: JoinOptions) {
-    const key = typeof options?.key === 'string' && options.key.length <= 64 ? options.key : null;
-    let start: Body = this.world.spawn;
-    let color = this.joined++ % SCARF_COLORS.length;
-    let inventory: Record<string, number> = {};
-    if (key) {
-      // Rejoining before the server noticed the old connection died: take over that player.
-      const oldId = this.sessionOfKey.get(key);
-      const old = oldId ? this.state.players.get(oldId) : undefined;
-      if (oldId && old) {
-        this.parked.set(key, { body: bodyOf(old), color: old.color, inventory: inventoryOf(old), at: Date.now() });
-        this.clients.getById(oldId)?.leave(TAKEN_OVER);
-      }
-      const parked = this.parked.get(key);
-      if (parked) {
-        start = parked.body;
-        color = parked.color;
-        inventory = parked.inventory;
-        this.parked.delete(key);
-      }
-      this.sessionOfKey.set(key, client.sessionId);
+  // Runs before onJoin: only signed-in players with a character get in.
+  async onAuth(_client: Client, options: JoinOptions) {
+    const account = await accountOf(options?.token);
+    if (!account) throw new Error('Please sign in again.');
+    const saved = await (await getStorage()).loadPlayer(account);
+    if (!saved) throw new Error('Create a character first.');
+    return { account, saved };
+  }
+
+  onJoin(client: Client) {
+    const { account, saved } = client.auth as { account: string; saved: SavedPlayer };
+    let record = saved;
+    // Already playing in another tab (or a connection that hasn't timed out yet): this one takes
+    // over, carrying on from where that one was.
+    const oldId = this.sessionOfAccount.get(account);
+    if (oldId) {
+      record = this.recordOf(oldId) ?? record;
+      this.inboxes.delete(oldId); // so its leaving doesn't save over this session
+      this.state.players.delete(oldId);
+      this.clients.getById(oldId)?.leave(TAKEN_OVER);
     }
+    this.accounts.set(account, record);
+    this.sessionOfAccount.set(account, client.sessionId);
+
+    // Back where they left off in this world, or at spawn. Never inside ground built since.
+    const place = record.place?.world === WORLD_ID ? record.place : null;
+    const start: Body = place
+      ? { gx: place.x, gy: place.y, z: Math.max(place.z, this.world.groundUnder(place.x, place.y)), vz: 0 }
+      : this.world.spawn;
 
     const player = new PlayerState();
+    player.name = record.username;
+    player.race = record.race;
+    player.cls = record.cls;
     player.x = start.gx;
     player.y = start.gy;
     player.z = start.z;
@@ -157,8 +165,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     player.seq = 0;
     player.jumpHeight = DEFAULT_STATS.jumpHeight;
     player.actions = 0;
-    player.color = color;
-    for (const [item, n] of Object.entries(inventory)) player.inventory.set(item, n);
+    for (const [item, n] of Object.entries(record.inventory ?? {})) player.inventory.set(item, n);
     this.state.players.set(client.sessionId, player);
     this.inboxes.set(client.sessionId, {
       queue: [],
@@ -167,22 +174,42 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       lastAction: 0,
       lastBuild: 0,
       lastHeard: Date.now(),
-      key,
+      account,
     });
-    console.log(`${client.sessionId} joined (${this.state.players.size} online)`);
+    console.log(`${record.username} joined (${this.state.players.size} online)`);
   }
 
-  onLeave(client: Client) {
-    const player = this.state.players.get(client.sessionId);
-    const key = this.inboxes.get(client.sessionId)?.key;
-    // Only park if this session still owns the key (a rejoin may have taken it over already).
-    if (player && key && this.sessionOfKey.get(key) === client.sessionId) {
-      this.parked.set(key, { body: bodyOf(player), color: player.color, inventory: inventoryOf(player), at: Date.now() });
-      this.sessionOfKey.delete(key);
-    }
+  async onLeave(client: Client) {
+    const inbox = this.inboxes.get(client.sessionId);
+    if (!inbox) return; // taken over by another session, which already carried on from here
+    const done = this.savePlayer(client.sessionId);
+    console.log(`${this.state.players.get(client.sessionId)?.name} left (${this.state.players.size - 1} online)`);
+    this.sessionOfAccount.delete(inbox.account);
+    this.accounts.delete(inbox.account);
     this.state.players.delete(client.sessionId);
     this.inboxes.delete(client.sessionId);
-    console.log(`${client.sessionId} left (${this.state.players.size} online)`);
+    await done;
+  }
+
+  // A session's account record, updated with where its player is and what they carry right now.
+  private recordOf(sessionId: string): SavedPlayer | null {
+    const inbox = this.inboxes.get(sessionId);
+    const player = this.state.players.get(sessionId);
+    const record = inbox && this.accounts.get(inbox.account);
+    if (!player || !record) return null;
+    record.inventory = Object.fromEntries(player.inventory.entries());
+    record.place = { world: WORLD_ID, x: player.x, y: player.y, z: player.z };
+    return record;
+  }
+
+  private async savePlayer(sessionId: string) {
+    const record = this.recordOf(sessionId);
+    if (!record || !this.storage) return;
+    try {
+      await this.storage.savePlayer(record);
+    } catch (err) {
+      console.error(`saving player ${record.username} failed:`, err);
+    }
   }
 
   // Hit a tree or rock. The server checks everything: it exists, you're close enough, you're not too fast.
@@ -285,7 +312,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   private async loadWorld() {
     let saved: SavedWorld | null = null;
     try {
-      this.storage = await openStorage();
+      this.storage = await getStorage();
       saved = await this.storage.load(WORLD_ID);
     } catch (err) {
       // Better to keep playing than to refuse everyone; but say loudly that nothing is saved.
@@ -381,7 +408,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 }
 
 const bodyOf = (p: PlayerState): Body => ({ gx: p.x, gy: p.y, z: p.z, vz: p.vz });
-const inventoryOf = (p: PlayerState) => Object.fromEntries(p.inventory.entries());
 
 function addItem(player: PlayerState, item: ItemType, count: number) {
   player.inventory.set(item, Math.min(MAX_STACK, (player.inventory.get(item) ?? 0) + count));

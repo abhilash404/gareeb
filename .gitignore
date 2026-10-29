@@ -1,3 +1,7 @@
 node_modules
 dist
 save
+public/characters/manifest.json
+
+# Sprite prompts, PixelLab notes and exports (kept locally, not in git)
+docs

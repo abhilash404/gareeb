@@ -7,16 +7,20 @@
 ```
 npm install
 npm run dev        # starts the game server (port 2567) and the game (port 5173)
-npm run bot        # adds a wandering test player; `npm run bot -- 10` leaves after 10s
+npm run bot        # adds a wandering test player; `npm run bot -- 10 Bob` plays as "Bob" for 10s
 npm run sprites    # regenerate the placeholder sprites in public/assets (and rebuild the atlas)
 npm run atlas      # rebuild public/atlas from public/assets (also runs automatically on npm run dev)
 npm run build      # production build into dist/
 npm start          # production server: game page + multiplayer on one port (PORT, default 2567)
 ```
 
-Open http://localhost:5173.
+Open http://localhost:5173, sign in, and create a character.
 
-**Testing with two players:** open the game in two separate browser windows side by side (not tabs; background tabs pause), or run `npm run bot`.
+**Development login:** `npm run dev` also offers signing in by just typing a name (each name is its own
+account). It's for testing on your own computer, e.g. two windows as two players without two Google
+accounts. `npm start` (production) never allows it.
+
+**Testing with two players:** open the game in two separate browser windows side by side (not tabs; background tabs pause) and sign in as different players, or run `npm run bot`.
 On another device on the same Wi-Fi, open the "Network" address `npm run dev` prints (e.g. `http://192.168.1.3:5173`); allow Node.js through Windows Firewall if asked.
 
 If the server behaves oddly after editing files in `server/` or `shared/`, stop `npm run dev` (Ctrl+C)
@@ -38,8 +42,8 @@ and start it again: its auto-restart occasionally misses a change.
 - Wood places as wooden planks. You can build up to height 24, never inside a player.
 - The cursor outlines the block face under the mouse: white if you can break or build there, red if not
   (too far, or nothing to do).
-- Your inventory lives on the server. It survives reconnects (5 minutes), but not closing the tab yet:
-  that will come with player accounts.
+- Your character, inventory and position are saved to your account: they're back next time you sign
+  in, from any device. Signing in somewhere else while playing moves you there (the old tab closes).
 
 ## Hosting on Render
 
@@ -56,6 +60,8 @@ Render sets `PORT`; the server uses it and serves the built game from `dist/` on
 
 | Variable | What it does |
 |---|---|
+| `SUPABASE_URL` | **Required for sign-in.** Your Supabase project URL, e.g. `https://abcd.supabase.co` (Supabase: *Project Settings → API*). |
+| `SUPABASE_ANON_KEY` | **Required for sign-in.** The project's public *anon* key (same page; newer projects call it the *publishable* key). Safe to show to browsers. |
 | `DATABASE_URL` | **Strongly recommended.** A Postgres connection string. The world (seed + every change players made) is saved there every 10 s and when the server stops, and loaded when it starts. Without it, saves go to files in `save/`, which Render **wipes on every restart** — and free Render servers restart after ~15 minutes with no visitors. |
 | `WORLD_SEED` | The seed (any whole number, e.g. `48213`) used when a **new** world is created. Once a world is saved, its seed comes from the save and this is ignored. |
 | `WORLD_ID` | Which saved world to run (default `main`). Change it to start a fresh world while keeping the old one in the database. |
@@ -64,6 +70,23 @@ Render sets `PORT`; the server uses it and serves the built game from `dist/` on
 **Getting a free database:** create a project on [Supabase](https://supabase.com) or [Neon](https://neon.tech),
 copy its Postgres connection string (Supabase: *Connect → Session pooler*), and paste it into Render as
 `DATABASE_URL`. The server creates its `worlds` table itself.
+
+### Setting up Google sign-in
+
+Players sign in with Google through Supabase; the game never sees or stores passwords.
+
+1. **Google Cloud Console** (console.cloud.google.com): create a project, then *APIs & Services →
+   OAuth consent screen*: app name, support email, and (when going public) a privacy policy link.
+   Add your own Google address as a test user while it's in *Testing*; switch it to *In production*
+   when friends should be able to sign in (basic sign-in needs no review by Google).
+2. *APIs & Services → Credentials → Create credentials → OAuth client ID*, type **Web application**.
+   Under *Authorized redirect URIs* add `https://<your-project>.supabase.co/auth/v1/callback`.
+   Copy the **Client ID** and **Client secret**.
+3. **Supabase**: *Authentication → Sign In / Providers → Google*: enable it and paste the ID and secret.
+4. **Supabase**: *Authentication → URL Configuration*: set *Site URL* to your Render address
+   (e.g. `https://your-game.onrender.com`) and add `http://localhost:5173` to *Redirect URLs* for testing.
+5. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` on Render (and locally, if you want Google sign-in there:
+   `$env:SUPABASE_URL="..."; $env:SUPABASE_ANON_KEY="..."; npm run dev`).
 
 ### World seed guidance
 
@@ -127,9 +150,11 @@ copy its Postgres connection string (Supabase: *Connect → Session pooler*), an
   automatically on a jittery connection.
 - The server lets each player move at most one step per tick of real time, so a modified client can't
   speed-hack by sending inputs faster.
+- **Accounts:** joining requires a login token, which the server checks (with Supabase) before letting
+  you in. Player records (character, inventory, position) are saved on leaving and every 10 s.
 - **Staying connected:** browsers send a heartbeat every second (the ping is shown top right). The server
-  removes players it hasn't heard from for 10 s, and a browser that loses the server reloads and rejoins.
-  Each tab has a key, so a rejoin within 5 minutes puts you back where you were, with your items.
+  removes players it hasn't heard from for 10 s, and a browser that loses the server reloads and rejoins
+  where it left off.
 
 ## Project layout
 
@@ -138,11 +163,17 @@ copy its Postgres connection string (Supabase: *Connect → Session pooler*), an
 | `shared/terrain.ts` | Seeded noise and terrain generation: heights, water, trees, rocks; block types |
 | `shared/world.ts` | Blocks, edited columns, collision, jumping, falling, reach, building rules — used by both browser and server |
 | `shared/items.ts` | Items: what they place, what blocks and trees/rocks drop |
+| `shared/characters.ts` | Races, classes and username rules |
+| `server/auth.ts` | Checks login tokens (Supabase, or the development login) |
+| `server/api.ts` | Web API: login settings, your character, creating a character |
 | `shared/protocol.ts` | Synced state (players, inventories, trees/rocks, edited columns) and message types |
 | `server/index.ts` | Starts the Colyseus game server (and serves `dist/` in production) |
 | `server/WorldRoom.ts` | The world room: joins/leaves, movement, hits, breaking/placing, saving |
-| `server/storage.ts` | Saves and loads worlds: Postgres (`DATABASE_URL`) or files in `save/` |
-| `src/main.ts` | Starts Phaser |
+| `server/storage.ts` | Saves and loads worlds and player accounts: Postgres (`DATABASE_URL`) or files in `save/` |
+| `src/main.ts` | Sign in, make sure there's a character, then start Phaser |
+| `src/auth.ts` | Signing in and out, and calling the server's API |
+| `src/screens.ts` | The sign-in and character creation screens |
+| `src/characterSheets.ts` | Which sprite sheet each race/class uses, and its animation frames |
 | `src/iso.ts` | Grid ↔ screen maths and draw-order layers |
 | `src/TerrainView.ts` | Draws chunks near the player, removes far ones, redraws edited columns |
 | `src/picking.ts` | Finds the block and face under the mouse |
@@ -153,6 +184,26 @@ copy its Postgres connection string (Supabase: *Connect → Session pooler*), an
 | `tools/make-sprites.mjs` | Draws the placeholder sprites with code |
 | `tools/pack-atlas.mjs` | Packs world sprites (plus rim variants) into `public/atlas/terrain.*` |
 | `tools/bot.ts` | Test bot player |
+| `tools/import-pixellab.mjs` | Turns a PixelLab character into a character sheet |
+
+## Character sprites
+
+One sheet per race + class in `public/characters/`, named `race_class.png` in lower case
+(e.g. `elf_mage.png`). Races: human, elf, dwarf, goblin, merfolk. Classes: knight, tank, mage, assassin, cleric.
+
+- **256 × 64 pixels**: 8 columns × 2 rows of 32 × 32 frames, no gaps.
+- Row 1 faces down-right, row 2 faces up-right (left-facing is made by flipping).
+- Each row: idle, walk × 4, action wind-up, action strike, action recover.
+- Feet on pixel row 30 of each frame; nothing crosses into the next frame.
+
+**From PixelLab:** `npm run import-character -- <PixelLab character id or export folder> <race_class>`
+downloads the character, takes its south-east/north-east standing pose plus its `walk` and `attack`
+animations, lines up the feet, and writes the sheet. The prompts and notes on how
+the existing ones were made are kept locally in `docs/sprite-prompts/pixellab/` (not in git).
+
+Restart `npm run dev` (or run `npm run atlas`) after adding sheets: it lists them in
+`public/characters/manifest.json` and warns about wrong sizes. Combinations without a sheet use the hooded
+placeholder, with its scarf in the class colour.
 
 ## Sprites
 

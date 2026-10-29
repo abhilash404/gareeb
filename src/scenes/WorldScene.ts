@@ -6,8 +6,6 @@ import { decodeColumn } from '../../shared/terrain';
 import { ITEMS, type ItemType } from '../../shared/items';
 import {
   ROOM_NAME,
-  SERVER_PORT,
-  SCARF_COLORS,
   ACTION_COOLDOWN_MS,
   BUILD_COOLDOWN_MS,
   PATCH_MS,
@@ -25,6 +23,8 @@ import { TerrainView } from '../TerrainView';
 import { Hotbar } from '../hotbar';
 import { pickBlock, placeTarget, type BlockHit } from '../picking';
 import { showStatus, showPing, showCoords, showToast } from '../status';
+import { currentToken, SERVER_URL } from '../auth';
+import { allSheets } from '../characterSheets';
 
 // What the pointer is on: a tree/rock, or a face of a block.
 type Target = { kind: 'prop'; x: number; y: number; h: number } | ({ kind: 'block' } & BlockHit);
@@ -91,8 +91,12 @@ export class WorldScene extends Phaser.Scene {
   preload() {
     // All world sprites come from one atlas (built by tools/pack-atlas.mjs), so they draw in one go.
     this.load.atlas('terrain', 'atlas/terrain.png', 'atlas/terrain.json');
-    this.load.spritesheet('player', 'assets/player.png', { frameWidth: 16, frameHeight: 24 });
-    this.load.spritesheet('player_scarf', 'assets/player_scarf.png', { frameWidth: 16, frameHeight: 24 });
+    // Every race/class sheet that exists (they're small), plus the placeholder and its scarf layer.
+    for (const sheet of allSheets()) {
+      const size = { frameWidth: sheet.frameW, frameHeight: sheet.frameH };
+      this.load.spritesheet(sheet.key, sheet.url, size);
+      if (sheet.scarf) this.load.spritesheet(`${sheet.key}_scarf`, sheet.scarf, size);
+    }
   }
 
   create() {
@@ -220,15 +224,16 @@ export class WorldScene extends Phaser.Scene {
 
   private async connect() {
     showStatus('Connecting…');
-    // Dev: Vite and the game server run on separate ports. Production: one server hosts both.
-    const client = new Client(
-      import.meta.env.DEV ? `${location.protocol}//${location.hostname}:${SERVER_PORT}` : location.origin,
-    );
-    const options: JoinOptions = { key: tabKey() };
+    const client = new Client(SERVER_URL);
+    const token = await currentToken();
+    if (!token) return location.reload(); // signed out meanwhile: back to the sign-in screen
+    const options: JoinOptions = { token };
     try {
       this.room = await client.joinOrCreate(ROOM_NAME, options, WorldState);
     } catch (err) {
       console.error(err);
+      // Refused because of the login (expired, or no character): start over from sign-in.
+      if (/sign in|character/i.test(String((err as Error)?.message))) return location.reload();
       showStatus("Can't reach the game server. Retrying…");
       this.time.delayedCall(RETRY_MS, () => this.connect());
       return;
@@ -240,7 +245,7 @@ export class WorldScene extends Phaser.Scene {
     // and would leave us frozen while it retries for about a minute. We rejoin ourselves instead.
     room.reconnection.enabled = false;
     room.onLeave((code) => {
-      if (code === TAKEN_OVER) showStatus('You joined from another tab. This one is closed.');
+      if (code === TAKEN_OVER) showStatus('You started playing in another tab or device. This one is closed.');
       else this.rejoin();
     });
     this.lastPongAt = performance.now();
@@ -287,7 +292,7 @@ export class WorldScene extends Phaser.Scene {
 
     callbacks.onAdd('players', (player, id) => {
       if (id === room.sessionId ? this.me : this.remotes.has(id)) return; // already shown
-      const view = new CharacterView(this, SCARF_COLORS[player.color]);
+      const view = new CharacterView(this, { name: player.name, race: player.race, cls: player.cls });
       const body = bodyOf(player);
       if (id === room.sessionId) {
         this.me = view;
@@ -572,20 +577,6 @@ const snapshotOf = (p: PlayerState, t: number): Snapshot => ({
   dirX: p.dirX,
   dirY: p.dirY,
 });
-
-// A random id for this browser tab that survives reloads (see JoinOptions.key).
-function tabKey() {
-  try {
-    let key = sessionStorage.getItem('playerKey');
-    if (!key) {
-      key = Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(36)).join('');
-      sessionStorage.setItem('playerKey', key);
-    }
-    return key;
-  } catch {
-    return undefined; // storage blocked: we just start at spawn after a reconnect
-  }
-}
 
 // A position part-way (t = 0..1) from a to b.
 const blend = (a: Body, b: Body, t: number): Body => ({

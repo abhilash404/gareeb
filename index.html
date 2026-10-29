@@ -26,6 +26,7 @@
         background: rgba(0, 0, 0, 0.55); border-radius: 8px;
         user-select: none;
       }
+      #hotbar:empty { display: none; }
       #hotbar .slot {
         position: relative; width: 72px; height: 72px;
         display: grid; place-items: center;
@@ -50,6 +51,54 @@
         font: 14px system-ui, sans-serif; color: #f4f1ff; text-shadow: 0 1px 3px #000;
         animation: toast 1.6s ease-out forwards;
       }
+      #signout {
+        position: fixed; top: 26px; left: 10px; padding: 2px 6px;
+        font: 11px ui-monospace, monospace; color: #f4f1ff; opacity: 0.6;
+        background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px;
+        cursor: pointer;
+      }
+      #signout:hover { opacity: 1; }
+      #signout[hidden] { display: none; }
+
+      /* Sign-in and character creation */
+      #screen {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+        background: rgba(15, 14, 20, 0.82); color: #f4f1ff; font: 15px system-ui, sans-serif;
+        overflow-y: auto;
+      }
+      #screen[hidden] { display: none; }
+      #screen .panel {
+        width: min(360px, 100%); padding: 24px; display: flex; flex-direction: column; gap: 10px;
+        background: #26232f; border: 2px solid #3b3648; border-radius: 10px;
+      }
+      #screen .panel.wide { width: min(640px, 100%); }
+      #screen h1 { margin: 0 0 6px; font-size: 22px; }
+      #screen label { font-size: 13px; opacity: 0.8; margin-top: 6px; }
+      #screen .hint { margin: 0; font-size: 12px; opacity: 0.65; }
+      #screen .error { margin: 0; min-height: 1.2em; color: #ff8a8a; font-size: 13px; }
+      #screen input {
+        padding: 9px 10px; font: inherit; color: inherit;
+        background: #1b1922; border: 1px solid #4a4459; border-radius: 6px;
+      }
+      #screen button {
+        padding: 9px 12px; font: inherit; color: inherit; cursor: pointer;
+        background: #332f3f; border: 1px solid #4a4459; border-radius: 6px;
+      }
+      #screen button:hover { background: #3d384b; }
+      #screen button.primary { background: #6b46c1; border-color: #8a63e0; font-weight: 600; }
+      #screen button.primary:hover { background: #7a54d4; }
+      #screen button:disabled { opacity: 0.5; cursor: default; }
+      #screen .row { display: flex; gap: 8px; }
+      #screen .row input { flex: 1; min-width: 0; }
+      #screen .choices { display: flex; flex-wrap: wrap; gap: 6px; }
+      #screen .choices button.picked { background: #6b46c1; border-color: #8a63e0; }
+      #screen .creator { display: flex; gap: 20px; flex-wrap: wrap; }
+      #screen .stage {
+        flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px;
+        padding: 12px; background: #1b1922; border-radius: 8px;
+      }
+      #screen .preview { width: 160px; height: 160px; image-rendering: pixelated; }
+      #screen .options { flex: 1 1 260px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
       @keyframes toast {
         from { opacity: 0; transform: translateY(6px); }
         15% { opacity: 1; transform: none; }
@@ -64,6 +113,8 @@
     <div id="coords"></div>
     <div id="toasts"></div>
     <div id="hotbar"></div>
+    <button id="signout" hidden>Sign out</button>
+    <div id="screen" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

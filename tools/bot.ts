@@ -1,18 +1,37 @@
 // A fake player that joins the world and wanders around, for testing multiplayer alone.
+// Uses the development login, so it only works with `npm run dev` running.
 // Usage: npm run bot            (runs until you press Ctrl+C)
 //        npm run bot -- 10      (leaves after 10 seconds)
+//        npm run bot -- 10 Bob  (plays as "Bob"; each name is its own account)
 import { Callbacks, Client } from '@colyseus/sdk';
 import { ROOM_NAME, SERVER_PORT, HEARTBEAT_MS, WorldState } from '../shared/protocol';
 import { TICK_MS } from '../shared/world';
+import { RACES, CLASSES } from '../shared/characters';
 
 const seconds = Number(process.argv[2]) || Infinity;
-const client = new Client(`http://localhost:${SERVER_PORT}`);
-const room = await client.joinOrCreate(ROOM_NAME, {}, WorldState);
-console.log(`bot joined as ${room.sessionId}`);
+const name = process.argv[3] || 'Bot';
+const server = `http://localhost:${SERVER_PORT}`;
+const token = `dev:${name}`;
+
+// Make the bot's character the first time, with a random race and class.
+const pickOne = <T>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
+const me = await (await fetch(`${server}/api/me`, { headers: { Authorization: `Bearer ${token}` } })).json();
+if (!me.character) {
+  const res = await fetch(`${server}/api/character`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: name, race: pickOne(RACES).id, cls: pickOne(CLASSES).id }),
+  });
+  console.log('created character:', JSON.stringify(await res.json()));
+}
+
+const client = new Client(server);
+const room = await client.joinOrCreate(ROOM_NAME, { token }, WorldState);
+console.log(`bot joined as ${name}`);
 
 const callbacks = Callbacks.get(room);
-callbacks.onAdd('players', (_p, id) => {
-  if (id !== room.sessionId) console.log(`bot sees player ${id}`);
+callbacks.onAdd('players', (p, id) => {
+  if (id !== room.sessionId) console.log(`bot sees ${p.name} (${p.race} ${p.cls})`);
 });
 
 let dir = { x: 0, y: 0 };

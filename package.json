@@ -6,8 +6,9 @@
   "scripts": {
     "sprites": "node tools/make-sprites.mjs && npm run atlas",
     "atlas": "node tools/pack-atlas.mjs",
+    "import-character": "node tools/import-pixellab.mjs",
     "dev": "npm run atlas && concurrently -k -n server,game -c magenta,cyan \"npm:server\" \"npm:client\"",
-    "server": "tsx watch server/index.ts",
+    "server": "tsx watch server/index.ts --dev",
     "client": "vite",
     "bot": "tsx tools/bot.ts",
     "build": "npm run atlas && tsc --noEmit && vite build",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@colyseus/schema": "^5.0.42",
     "@colyseus/sdk": "^0.18.8",
+    "@supabase/supabase-js": "^2.118.0",
     "colyseus": "^0.18.10",
     "express": "^5.1.0",
     "pg": "^8.23.1",

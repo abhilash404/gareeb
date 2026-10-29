@@ -77,3 +77,16 @@ fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'terrain.png'), PNG.sync.write(atlas));
 fs.writeFileSync(path.join(OUT, 'terrain.json'), JSON.stringify(json, null, 1));
 console.log(`packed ${frames.length} sprites into atlas/terrain.png (${ATLAS_WIDTH}x${height})`);
+
+// List the character sheets in public/characters (race_class.png), so the game knows which exist
+// and uses the placeholder for the rest. Warn about sheets with the wrong size.
+const CHARS = path.resolve('public/characters');
+fs.mkdirSync(CHARS, { recursive: true });
+const sheets = fs.readdirSync(CHARS).filter((f) => /^[a-z]+_[a-z]+\.png$/.test(f));
+for (const f of sheets) {
+  const { width, height } = PNG.sync.read(fs.readFileSync(path.join(CHARS, f)));
+  if (width !== 256 || height !== 64) console.warn(`! characters/${f} is ${width}x${height}; it should be 256x64`);
+}
+const names = sheets.map((f) => f.replace('.png', ''));
+fs.writeFileSync(path.join(CHARS, 'manifest.json'), JSON.stringify(names));
+console.log(`character sheets: ${names.length ? names.join(', ') : 'none yet (placeholder for everyone)'}`);

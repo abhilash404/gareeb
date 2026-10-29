@@ -75,13 +75,13 @@ copy its Postgres connection string (Supabase: *Connect → Session pooler*), an
 
 Players sign in with Google through Supabase; the game never sees or stores passwords.
 
-1. **Google Cloud Console** (console.cloud.google.com): create a project, then *APIs & Services →
-   OAuth consent screen*: app name, support email, and (when going public) a privacy policy link.
-   Add your own Google address as a test user while it's in *Testing*; switch it to *In production*
+1. **Google Cloud Console** (console.cloud.google.com): create a project and open *Google Auth Platform*.
+   *Branding*: app name, support email, and (when going public) a privacy policy link.
+   *Audience*: add your own Google address as a test user while it's in *Testing*; click *Publish app*
    when friends should be able to sign in (basic sign-in needs no review by Google).
-2. *APIs & Services → Credentials → Create credentials → OAuth client ID*, type **Web application**.
+2. *Clients → Create client*, type **Web application**.
    Under *Authorized redirect URIs* add `https://<your-project>.supabase.co/auth/v1/callback`.
-   Copy the **Client ID** and **Client secret**.
+   Copy the **Client ID** and **Client secret** (open the client again if you didn't copy them).
 3. **Supabase**: *Authentication → Sign In / Providers → Google*: enable it and paste the ID and secret.
 4. **Supabase**: *Authentication → URL Configuration*: set *Site URL* to your Render address
    (e.g. `https://your-game.onrender.com`) and add `http://localhost:5173` to *Redirect URLs* for testing.

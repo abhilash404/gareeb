@@ -4,13 +4,12 @@ import { ITEM_FROM_BLOCK } from './items';
 
 export const TICK_MS = 1000 / 60; // one movement step; same on client and server
 const DT = TICK_MS / 1000;
-const SPEED = 3; // tiles per second
+const SPEED = 3.45; // tiles per second
 const RADIUS = 0.2; // half the player's width, in tiles
 const GRAVITY = 40; // blocks per second²
 const MAX_FALL = 20; // blocks per second
 const JUMP_CLEARANCE = 0.25; // extra height above the ledge, so a 1-block jump clears a 1-block step
-export const REACH = 1; // how far away (in tiles) you can hit trees and rocks
-export const BUILD_REACH = 3; // how far away (in tiles) you can place and break blocks
+export const REACH = 1; // how far away (in tiles) you can hit trees and rocks, and place and break blocks
 const CHARACTER_HEIGHT = 1.4; // in blocks
 
 // A character's position. gx/gy are in tiles; z is the height of their feet in blocks;
@@ -112,7 +111,7 @@ export class World {
   inBuildReach(b: Body, x: number, y: number, slack = 0) {
     const dx = Math.max(x - b.gx, 0, b.gx - (x + 1));
     const dy = Math.max(y - b.gy, 0, b.gy - (y + 1));
-    return Math.max(dx, dy) <= BUILD_REACH + slack && Math.abs(this.surface(x, y) - b.z) <= BUILD_REACH + 1 + slack;
+    return Math.max(dx, dy) <= REACH + slack && Math.abs(this.surface(x, y) - b.z) <= REACH + 1 + slack;
   }
 
   // Would a block at height z on column (x, y) be inside this character?

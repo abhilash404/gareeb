@@ -32,7 +32,7 @@ and start it again: its auto-restart occasionally misses a change.
 |---|---|
 | WASD / arrow keys | Move |
 | Space | Jump (hold to keep jumping) |
-| Left click | Hit a tree or rock next to you, or break the top block of a column within 3 tiles |
+| Left click | Hit a tree or rock next to you, or break the top block of a column next to you |
 | Right click | Place the selected item as a block (on the block you point at, or beside the side you point at) |
 | 1–4 / mouse wheel | Pick a hotbar slot |
 

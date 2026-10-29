@@ -25,10 +25,10 @@ async function boot() {
     await signOut(); // the login expired or was revoked: start again
     return;
   }
+  await loadCharacterManifest(); // before character creation, so its preview shows the real sprites
   if (!me.data.character) await showCharacterCreation();
   hideScreens();
 
-  await loadCharacterManifest();
   const signOutButton = document.getElementById('signout')!;
   signOutButton.hidden = false;
   signOutButton.onclick = () => signOut();

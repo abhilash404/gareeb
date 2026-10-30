@@ -6,20 +6,17 @@ import {
   WorldState,
   PROP_HP,
   ACTION_COOLDOWN_MS,
-  BUILD_COOLDOWN_MS,
   PATCH_MS,
   SILENT_KICK_MS,
   TAKEN_OVER,
   type InputMessage,
   type InteractMessage,
-  type BreakMessage,
-  type PlaceMessage,
   type JoinOptions,
   type PingMessage,
 } from '../shared/protocol';
 import { World, TICK_MS, DEFAULT_STATS, type Body } from '../shared/world';
 import { encodeColumn, decodeColumn, type BlockType } from '../shared/terrain';
-import { ITEM_FROM_BLOCK, PROP_DROPS, MAX_STACK, isItem, blockOfItem, type ItemType } from '../shared/items';
+import { PROP_DROPS, MAX_STACK, isItem, type ItemType } from '../shared/items';
 import { getStorage, type Storage, type SavedWorld, type SavedPlayer } from './storage';
 import { accountOf } from './auth';
 
@@ -37,7 +34,6 @@ type Inbox = {
   budget: number;
   quietMs: number;
   lastAction: number; // Date.now() of the last hit on a tree/rock
-  lastBuild: number; // Date.now() of the last block placed or broken
   lastHeard: number; // Date.now() of this player's last message
   account: string; // the login account playing this session
 };
@@ -76,8 +72,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     });
 
     this.onMessage('interact', (client, msg: InteractMessage) => this.interact(client, msg));
-    this.onMessage('break', (client, msg: BreakMessage) => this.breakBlock(client, msg));
-    this.onMessage('place', (client, msg: PlaceMessage) => this.placeBlock(client, msg));
 
     this.onMessage('ping', (client, msg: PingMessage) => {
       this.heard(client);
@@ -165,14 +159,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     player.seq = 0;
     player.jumpHeight = DEFAULT_STATS.jumpHeight;
     player.actions = 0;
-    for (const [item, n] of Object.entries(record.inventory ?? {})) player.inventory.set(item, n);
+    for (const [item, n] of Object.entries(record.inventory ?? {})) if (isItem(item)) player.inventory.set(item, n);
     this.state.players.set(client.sessionId, player);
     this.inboxes.set(client.sessionId, {
       queue: [],
       budget: 0,
       quietMs: 0,
       lastAction: 0,
-      lastBuild: 0,
       lastHeard: Date.now(),
       account,
     });
@@ -245,66 +238,15 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.dirty = true;
   }
 
-  // Break the top block of a column; the player gets it as an item.
-  private breakBlock(client: Client, msg: BreakMessage) {
-    const player = this.state.players.get(client.sessionId);
-    const inbox = this.heard(client);
-    if (!player || !inbox || !Number.isInteger(msg?.x) || !Number.isInteger(msg?.y)) return;
-    const { x, y } = msg;
-
-    const now = Date.now();
-    if (now - inbox.lastBuild < BUILD_COOLDOWN_MS) return;
-    if (!this.world.inBuildReach(bodyOf(player), x, y, REACH_SLACK)) return;
-    const type = this.world.breakableTop(x, y);
-    if (!type) return;
-
-    inbox.lastBuild = now;
-    player.actions = (player.actions + 1) % 65536;
-    const blocks = this.world.column(x, y);
-    blocks.pop();
-    this.setColumn(x, y, blocks);
-    const item = ITEM_FROM_BLOCK[type];
-    if (item) addItem(player, item, 1);
-  }
-
-  // Put one of an item from the player's inventory on top of a column.
-  private placeBlock(client: Client, msg: PlaceMessage) {
-    const player = this.state.players.get(client.sessionId);
-    const inbox = this.heard(client);
-    if (!player || !inbox || !Number.isInteger(msg?.x) || !Number.isInteger(msg?.y) || !isItem(msg?.item)) return;
-    const { x, y, item } = msg;
-
-    const have = player.inventory.get(item) ?? 0;
-    if (have < 1) return;
-    const now = Date.now();
-    if (now - inbox.lastBuild < BUILD_COOLDOWN_MS) return;
-    if (!this.world.canPlaceOn(x, y) || !this.world.inBuildReach(bodyOf(player), x, y, REACH_SLACK)) return;
-    // Never build a block inside someone.
-    const z = this.world.surface(x, y);
-    for (const p of this.state.players.values()) if (this.world.overlapsBlock(bodyOf(p), x, y, z)) return;
-
-    inbox.lastBuild = now;
-    player.actions = (player.actions + 1) % 65536;
-    const blocks = this.world.column(x, y);
-    blocks.push(blockOfItem(item));
-    this.setColumn(x, y, blocks);
-    if (have === 1) player.inventory.delete(item);
-    else player.inventory.set(item, have - 1);
-  }
-
-  // Change a column in the world and tell everyone.
+  // Blocks can't be broken or placed for now, but worlds saved while they could still load their
+  // changed columns. Changes a column in the world and tells everyone.
   private setColumn(x: number, y: number, blocks: BlockType[]) {
     this.world.setColumn(x, y, blocks);
-    const key = `${x},${y}`;
-    let column = this.state.columns.get(key);
-    if (!column) {
-      column = new ColumnState();
-      column.x = x;
-      column.y = y;
-      this.state.columns.set(key, column);
-    }
+    const column = new ColumnState();
+    column.x = x;
+    column.y = y;
     column.blocks = encodeColumn(blocks);
-    this.dirty = true;
+    this.state.columns.set(`${x},${y}`, column);
   }
 
   // ---------- Saving ----------

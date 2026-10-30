@@ -31,12 +31,44 @@ function googleIcon() {
   return icon;
 }
 
-// Welcome screen: the logo over the moving world (TitleScene), and the sign-in buttons.
-// Google sign-in leaves the page and comes back signed in; the development login (typing a name)
-// resolves straight away.
+// The welcome screen: the logo over the moving world (TitleScene), and a panel under it holding
+// either a message ("Connecting…") or the sign-in buttons. It's built once and its panel refilled,
+// so the logo doesn't flicker between steps.
+let welcomePanel: HTMLDivElement | undefined;
+let logo: HTMLImageElement | undefined;
+function welcome() {
+  if (welcomePanel && screen().className === 'welcome') return welcomePanel;
+  welcomePanel = el('div', { className: 'panel' });
+  logo = el('img', { className: 'logo', src: 'ui/logo.png', alt: 'Gareeb' });
+  screen().className = 'welcome';
+  screen().replaceChildren(
+    el('div', { className: 'welcome-box' },
+      logo,
+      el('p', { className: 'tagline', textContent: 'Gather, build a home, and find your kingdom.' }),
+      welcomePanel,
+    ),
+    el('footer', {}, el('a', { href: 'privacy.html', textContent: 'Privacy' })),
+  );
+  screen().hidden = false;
+  return welcomePanel;
+}
+
+// Resolves once the logo can be drawn (or failed to load), so the page can appear all at once.
+export function welcomeLogoReady(): Promise<void> {
+  welcome();
+  return logo!.decode().catch(() => {});
+}
+
+export function showWelcomeMessage(text: string) {
+  welcome().replaceChildren(el('p', { className: 'center', textContent: text }));
+}
+
+// The sign-in buttons. Google sign-in leaves the page and comes back signed in; the development
+// login (typing a name) resolves straight away.
 export function showLogin(config: LoginConfig): Promise<void> {
   return new Promise((resolve) => {
-    const panel = el('div', { className: 'panel' });
+    const panel = welcome();
+    panel.replaceChildren();
     if (config.supabaseUrl) {
       panel.append(
         el('button', { className: 'primary google', onclick: signInWithGoogle }, googleIcon(), 'Sign in with Google'),
@@ -60,16 +92,6 @@ export function showLogin(config: LoginConfig): Promise<void> {
     if (!config.supabaseUrl && !config.devLogin) {
       panel.append(el('p', { textContent: 'Sign-in is not set up on this server yet.' }));
     }
-    screen().className = 'welcome';
-    screen().replaceChildren(
-      el('div', { className: 'welcome-box' },
-        el('img', { className: 'logo', src: 'ui/logo.png', alt: 'Gareeb' }),
-        el('p', { className: 'tagline', textContent: 'Gather, build a home, and find your kingdom.' }),
-        panel,
-      ),
-      el('footer', {}, el('a', { href: 'privacy.html', textContent: 'Privacy' })),
-    );
-    screen().hidden = false;
   });
 }
 

@@ -32,16 +32,13 @@ and start it again: its auto-restart occasionally misses a change.
 |---|---|
 | WASD / arrow keys | Move |
 | Space | Jump (hold to keep jumping) |
-| Left click | Hit a tree or rock next to you, or break the top block of a column next to you |
-| Right click | Place the selected item as a block (on the block you point at, or beside the side you point at) |
-| 1–4 / mouse wheel | Pick a hotbar slot |
+| Left click | Hit a tree or rock next to you |
+| 1–2 / mouse wheel | Pick a hotbar slot |
 
 - Trees break after 3 hits and give **3 wood**; rocks break after 4 and give **2 stone**.
-- Breaking a block gives it back as an item (grass gives dirt). You can't break the bottom block of a
-  column, water, or a block with a tree/rock on it.
-- Wood places as wooden planks. You can build up to height 24, never inside a player.
-- The cursor outlines the block face under the mouse: white if you can break or build there, red if not
-  (too far, or nothing to do).
+- The ground itself can't be broken or built on (for now).
+- The cursor outlines the tile of the tree or rock under the mouse: white if it's in reach, red if not.
+- Moving looks equally fast on screen in all 8 directions.
 - Your character, inventory and position are saved to your account: they're back next time you sign
   in, from any device. Signing in somewhere else while playing moves you there (the old tab closes).
 
@@ -140,9 +137,9 @@ Players sign in with Google through Supabase; the game never sees or stores pass
 
 ## How multiplayer works
 
-- The **server decides** everything: where players are, what they hit, what they build and carry.
-  Browsers send requests (keys held, "break this", "place that"), and the server checks each one
-  (reach, cooldowns, inventory, not building inside players) before applying it.
+- The **server decides** everything: where players are, what they hit, what they carry.
+  Browsers send requests (keys held, "hit this tree"), and the server checks each one
+  (reach, cooldowns) before applying it.
 - Your own character moves **instantly** on your screen (prediction). When the server's answer arrives,
   the browser replays any inputs the server hasn't processed yet (reconciliation). Both sides use the
   same code in `shared/world.ts`, so they normally agree exactly.
@@ -162,13 +159,13 @@ Players sign in with Google through Supabase; the game never sees or stores pass
 |---|---|
 | `shared/terrain.ts` | Seeded noise and terrain generation: heights, water, trees, rocks; block types |
 | `shared/world.ts` | Blocks, edited columns, collision, jumping, falling, reach, building rules — used by both browser and server |
-| `shared/items.ts` | Items: what they place, what blocks and trees/rocks drop |
+| `shared/items.ts` | Items, and what trees/rocks drop |
 | `shared/characters.ts` | Races, classes and username rules |
 | `server/auth.ts` | Checks login tokens (Supabase, or the development login) |
 | `server/api.ts` | Web API: login settings, your character, creating a character |
 | `shared/protocol.ts` | Synced state (players, inventories, trees/rocks, edited columns) and message types |
 | `server/index.ts` | Starts the Colyseus game server (and serves `dist/` in production) |
-| `server/WorldRoom.ts` | The world room: joins/leaves, movement, hits, breaking/placing, saving |
+| `server/WorldRoom.ts` | The world room: joins/leaves, movement, hits, saving |
 | `server/storage.ts` | Saves and loads worlds and player accounts: Postgres (`DATABASE_URL`) or files in `save/` |
 | `src/main.ts` | Sign in, make sure there's a character, then start Phaser |
 | `src/auth.ts` | Signing in and out, and calling the server's API |
@@ -176,7 +173,6 @@ Players sign in with Google through Supabase; the game never sees or stores pass
 | `src/characterSheets.ts` | Which sprite sheet each race/class uses, and its animation frames |
 | `src/iso.ts` | Grid ↔ screen maths and draw-order layers |
 | `src/TerrainView.ts` | Draws chunks near the player, removes far ones, redraws edited columns |
-| `src/picking.ts` | Finds the block and face under the mouse |
 | `src/hotbar.ts` | The item bar at the bottom of the screen |
 | `src/scenes/WorldScene.ts` | Connects to the server, prediction, other players, cursor, hitting/building |
 | `src/scenes/TitleScene.ts` | The welcome screen's background: an offline world the camera drifts over, with wandering characters |

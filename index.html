@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gareeb</title>
+    <link rel="preload" href="ui/logo.png" as="image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&display=swap" rel="stylesheet" />
@@ -78,6 +79,9 @@
         overflow-y: auto;
       }
       #screen[hidden] { display: none; }
+      /* Hidden until the moving background and the logo are ready, then both fade in together. */
+      body > canvas, #screen { transition: opacity 0.35s; }
+      body.starting > canvas, body.starting #screen { opacity: 0; }
       /* The moving world shows through on the welcome screen; a vignette keeps the text readable. */
       #screen.welcome { background: radial-gradient(ellipse at center, rgba(14, 11, 18, 0.15) 30%, rgba(14, 11, 18, 0.75) 100%); }
       #screen.creating { background: rgba(14, 11, 18, 0.7); }
@@ -157,7 +161,7 @@
       }
     </style>
   </head>
-  <body>
+  <body class="starting">
     <div id="status" hidden></div>
     <div id="ping"></div>
     <div id="coords"></div>

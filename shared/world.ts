@@ -1,16 +1,17 @@
 // Rules shared by the browser and the server, so both agree on where players can go.
-import { CHUNK, SEA_LEVEL, BUILD_LIMIT, PROP_KINDS, generateChunk, blockType, type BlockType, type Chunk, type PropKind } from './terrain';
-import { ITEM_FROM_BLOCK } from './items';
+import { CHUNK, SEA_LEVEL, PROP_KINDS, generateChunk, blockType, type BlockType, type Chunk, type PropKind } from './terrain';
 
 export const TICK_MS = 1000 / 60; // one movement step; same on client and server
 const DT = TICK_MS / 1000;
-const SPEED = 3.45; // tiles per second
+const SPEED = 3.45; // tiles per second, when walking along a tile edge (two keys held)
+// Walking speed on screen, the same whichever keys are held. A step of (dx, dy) tiles moves
+// (dx - dy) * 16 px across and (dx + dy) * 8 px down, so a tile edge is hypot(16, 8) px long.
+const SCREEN_SPEED = SPEED * Math.hypot(16, 8); // pixels per second (before zoom)
 const RADIUS = 0.2; // half the player's width, in tiles
 const GRAVITY = 40; // blocks per second²
 const MAX_FALL = 20; // blocks per second
 const JUMP_CLEARANCE = 0.25; // extra height above the ledge, so a 1-block jump clears a 1-block step
-export const REACH = 1; // how far away (in tiles) you can hit trees and rocks, and place and break blocks
-const CHARACTER_HEIGHT = 1.4; // in blocks
+export const REACH = 1; // how far away (in tiles) you can hit trees and rocks
 
 // A character's position. gx/gy are in tiles; z is the height of their feet in blocks;
 // vz is their vertical speed (up is positive).
@@ -92,34 +93,6 @@ export class World {
     return this.edits.entries();
   }
 
-  // Can a block go on top of column (x, y)? Not on water, trees or rocks, or above the build limit.
-  // (The server also checks nobody is standing in the way.)
-  canPlaceOn(x: number, y: number) {
-    return !this.isWater(x, y) && !this.propAt(x, y) && this.surface(x, y) < BUILD_LIMIT;
-  }
-
-  // The top block of column (x, y) if it can be broken: not water, nothing standing on it,
-  // and never the bottom block (so there's no hole to fall out of the world through).
-  breakableTop(x: number, y: number): BlockType | null {
-    const top = this.surface(x, y);
-    if (top <= 1 || this.propAt(x, y)) return null;
-    const type = this.blockAt(x, y, top - 1);
-    return type && ITEM_FROM_BLOCK[type] ? type : null;
-  }
-
-  // Is column (x, y) within building reach of a character? `slack` lets the server allow for lag.
-  inBuildReach(b: Body, x: number, y: number, slack = 0) {
-    const dx = Math.max(x - b.gx, 0, b.gx - (x + 1));
-    const dy = Math.max(y - b.gy, 0, b.gy - (y + 1));
-    return Math.max(dx, dy) <= REACH + slack && Math.abs(this.surface(x, y) - b.z) <= REACH + 1 + slack;
-  }
-
-  // Would a block at height z on column (x, y) be inside this character?
-  overlapsBlock(b: Body, x: number, y: number, z: number) {
-    if (b.z >= z + 1 || b.z + CHARACTER_HEIGHT <= z) return false;
-    return corners(b.gx, b.gy).some(([cx, cy]) => Math.floor(cx) === x && Math.floor(cy) === y);
-  }
-
   hasBlock(x: number, y: number, z: number) {
     return z >= 0 && z < this.surface(x, y);
   }
@@ -178,9 +151,11 @@ export class World {
       // Screen right = grid (+1, -1), screen down = grid (+1, +1).
       let vx = input.x + input.y;
       let vy = input.y - input.x;
-      const len = Math.hypot(vx, vy);
-      vx = (vx / len) * SPEED * DT;
-      vy = (vy / len) * SPEED * DT;
+      // Scale so the move is the same length on screen in every direction. (Equal lengths in tiles
+      // would look half as fast up/down as left/right, because the view squashes the ground.)
+      const k = (SCREEN_SPEED * DT) / Math.hypot((vx - vy) * 16, (vx + vy) * 8);
+      vx *= k;
+      vy *= k;
       // One axis at a time so you slide along walls instead of sticking.
       if (this.canStand(gx + vx, gy, z)) gx += vx;
       if (this.canStand(gx, gy + vy, z)) gy += vy;

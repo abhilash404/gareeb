@@ -55,6 +55,7 @@ export class TitleScene extends Phaser.Scene {
       this.placeNearCamera(w, 0);
       this.wanderers.push(w);
     }
+    this.game.events.emit('title-ready');
   }
 
   update(time: number, delta: number) {

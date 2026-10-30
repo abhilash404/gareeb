@@ -24,10 +24,6 @@ export const TAKEN_OVER = 4001;
 export type InputMessage = { seq: number; x: number; y: number; j: number };
 // Browser -> server: hit the tree/rock on tile (x, y).
 export type InteractMessage = { x: number; y: number };
-// Browser -> server: break the top block of column (x, y).
-export type BreakMessage = { x: number; y: number };
-// Browser -> server: put one `item` on top of column (x, y) as a block.
-export type PlaceMessage = { x: number; y: number; item: string };
 
 // Server -> browser: synced automatically by Colyseus.
 // Note: synced fields start out undefined, so the server must set every one.
@@ -86,4 +82,3 @@ export type WorldState = SchemaType<typeof WorldState>;
 
 export const PROP_HP: Record<string, number> = { tree: 3, rock: 4 };
 export const ACTION_COOLDOWN_MS = 350; // fastest you can strike
-export const BUILD_COOLDOWN_MS = 150; // fastest you can place or break blocks
